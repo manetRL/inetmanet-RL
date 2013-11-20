@@ -85,20 +85,60 @@ void IPv4::initialize(int stage)
             return;
 
         // check if that gate is connected at all
-        cGate *manetgate = gate("transportOut", gateindex)->getPathEndGate();
-        if (manetgate==NULL)
-            return;
+       cGate *manetgate = gate("transportOut", gateindex)->getPathEndGate();
+       if (manetgate==NULL)
+           return;
 
-        cModule *destmod = manetgate->getOwnerModule();
-        if (destmod==NULL)
-            return;
+       cModule *destmod = manetgate->getOwnerModule();             //destmod punta a Coll_ManetRouting
+       if (destmod==NULL)
+          return;
 
-        // manet routing will be turned on ONLY for routing protocols which has the @reactive property set
-        // this prevents performance loss with other protocols that use pro active routing and do not need
-        // assistance from the IPv4 component
-        cProperties *props = destmod->getProperties();
-        manetRouting = props && props->getAsBool("reactive");
-        isDsr = props && props->getAsBool("isDsr");
+// # NT: 15/11/2013
+// # Modifica per il corretto funzionamento in assenza di protocolli di routing manet
+// # Codice inserito:
+       cModule *mod = destmod->getParentModule();     //mod punta al modulo MultiManet
+       if (mod->hasPar("hasManet"))
+       {
+           if (mod->par("hasManet").boolValue() == false)
+               return;
+       }
+       else
+           return;
+
+// # NT: 15/11/2013
+// # Modifica per il corretto funzionamento delle variabili 'manetrouting' e 'isDsr'
+// # Righe di codice originali
+
+//       // manet routing will be turned on ONLY for routing protocols which has the @reactive property set
+//       // this prevents performance loss with other protocols that use pro active routing and do not need
+//       // assistance from the IPv4 component
+//       cProperties *props = destmod->getProperties();
+//       manetRouting = props && props->getAsBool("reactive");
+//       isDsr = props && props->getAsBool("isDsr");
+
+// Codice inserito
+
+       int size = destmod->gate("forward_toManet", 0)->getVectorSize();
+       int i;
+
+    // manet routing will be turned on ONLY for routing protocols which has the @reactive property set
+    // (which are DSR, AODV, DYMO) this prevents performance loss with other protocols that use proactive
+    // routing and do not need assistance from the IPv4 component.
+
+       for (i=0; i < size; i++)
+       {
+           cModule *mod = destmod->gate("forward_toManet", i)->getNextGate()->getOwnerModule();  //mod punta al modulo manetrouting[i]
+           if (strcmp(mod->getClassName(), "DSRUU") == 0)
+           {
+               manetRouting = true;
+               isDsr = true;
+           }
+           else if (strcmp(mod->getClassName(), "AODVUU") == 0 || strcmp(mod->getClassName(), "DYMO") == 0 || strcmp(mod->getClassName(), "DYMOUM") == 0)
+           {
+               manetRouting = true;
+           }
+       }
+//###########################################################################################################
 
 #endif
     }

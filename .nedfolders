@@ -8,6 +8,7 @@ src
 -inet.transport.tcp_lwip
 -inet.transport.tcp_nsc
 -inet.examples.voiptool
+-inet.examples.hip
 -inet.underTest.hip.nodes
 -inet.examples.voipstream
 -inet.examples.WIMAX.WiMAXQoS
