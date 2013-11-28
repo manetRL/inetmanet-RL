@@ -93,9 +93,17 @@ void IPv4::initialize(int stage)
        if (destmod==NULL)
           return;
 
+       // manet routing will be turned on ONLY for routing protocols which has the @reactive property set
+       // this prevents performance loss with other protocols that use pro active routing and do not need
+       // assistance from the IPv4 component
+       cProperties *props = destmod->getProperties();
+       manetRouting = props && props->getAsBool("reactive");
+       isDsr = props && props->getAsBool("isDsr");
+
 // # NT: 15/11/2013
-// # Modifica per il corretto funzionamento in assenza di protocolli di routing manet
+// # Modifica per il corretto funzionamento in assenza di protocolli di routing manet e delle variabili "manetRouting e "isDsr"
 // # Codice inserito:
+
        cModule *mod = destmod->getParentModule();     //mod punta al modulo MultiManet
        if (mod->hasPar("hasManet"))
        {
@@ -104,19 +112,6 @@ void IPv4::initialize(int stage)
        }
        else
            return;
-
-// # NT: 15/11/2013
-// # Modifica per il corretto funzionamento delle variabili 'manetrouting' e 'isDsr'
-// # Righe di codice originali
-
-//       // manet routing will be turned on ONLY for routing protocols which has the @reactive property set
-//       // this prevents performance loss with other protocols that use pro active routing and do not need
-//       // assistance from the IPv4 component
-//       cProperties *props = destmod->getProperties();
-//       manetRouting = props && props->getAsBool("reactive");
-//       isDsr = props && props->getAsBool("isDsr");
-
-// Codice inserito
 
        int size = destmod->gate("forward_toManet", 0)->getVectorSize();
        int i;

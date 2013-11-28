@@ -34,6 +34,7 @@ std::string IPv4Route::info() const
     out << "gw:"; if (gateway.isUnspecified()) out << "*  "; else out << gateway << "  ";
     out << "mask:"; if (netmask.isUnspecified()) out << "*  "; else out << netmask << "  ";
     out << "metric:" << metric << " ";
+    out << "AD:" << adminDist << " ";
     if (interfacePtr)
     {
         out << "if:" << interfacePtr->getName();

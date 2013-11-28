@@ -48,9 +48,6 @@ void Coll_ManetRouting::handleMessage(cMessage *msg) {
 
                      if (strcmp(pack->getName(), "OLSR_ETX pkt") == 0)      //Controllo inserito poichè OLSR_ETX ha stesso numero di porta udp di OLSR
                          prot_name = "OLSR_ETX";
-                   //  if (strcmp(pack->getName(), "Vedere nome pacchetto") == 0)      //Controllo inserito poichè DYMOUM ha stesso numero di porta udp di DYMO
-                   //      prot_name = "DYMOUM";
-
                      SendToManet(msg, prot_name);
                  }
              }

@@ -29,6 +29,7 @@ OSPF::RoutingTableEntry::RoutingTableEntry() :
 {
     setNetmask(IPv4Address::ALLONES_ADDRESS);
     setSource(IPv4Route::OSPF);
+    setAdminDist(IPv4Route::dOSPF);
     memset(&optionalCapabilities, 0, sizeof(OSPFOptions));
 }
 
@@ -47,6 +48,7 @@ OSPF::RoutingTableEntry::RoutingTableEntry(const RoutingTableEntry& entry) :
     setGateway(entry.getGateway());
     setInterface(entry.getInterface());
     setSource(entry.getSource());
+    setAdminDist(entry.getAdminDist());
     setMetric(entry.getMetric());
 }
 
