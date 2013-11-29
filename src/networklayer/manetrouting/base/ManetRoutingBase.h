@@ -180,15 +180,15 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
      */
     //@{
     //FIXME reduce these variations
-    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface = ManetAddress::ZERO);
+    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface = ManetAddress::ZERO, unsigned int AD = 255);
     virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, int index);
     virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry);
-    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, const struct in_addr &iface);
+    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, const struct in_addr &iface, unsigned int AD);
     virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, int index);
 
     virtual void deleteIpEntry(const ManetAddress &dst) {omnet_chg_rte(dst, dst, dst, 0, true);}
-    virtual void setIpEntry(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, const ManetAddress &iface = ManetAddress::ZERO)
-            {omnet_chg_rte(dst, gtwy, netm, hops, false, iface);}
+    virtual void setIpEntry(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, const ManetAddress &iface = ManetAddress::ZERO, unsigned int AD = 255)
+            {omnet_chg_rte(dst, gtwy, netm, hops, false, iface, AD);}
     //@}
 
     /**
@@ -350,7 +350,7 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
     // set/delete routing entry
     //FIXME nextHop.isUnspecified() means: need delete entry. Should add a new parameter for choose set/delete, should rename function
     //FIXME setRoute() vs omnet_chg_rte()
-    virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask = ManetAddress::ZERO);
+    virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask = ManetAddress::ZERO, unsigned int AD = 255);
     virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const char *ifaceName, const int &hops, const ManetAddress &mask = ManetAddress::ZERO);
 
     virtual bool isProactive() = 0;

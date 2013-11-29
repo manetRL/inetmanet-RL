@@ -228,7 +228,7 @@ void DYMO_RoutingTable::maintainAssociatedRoutingEntryFor(DYMO_RoutingEntry* ent
         // entry is valid
         ManetAddress mask(IPv4Address::ALLONES_ADDRESS);
         ManetAddress gtw(entry->routeNextHopAddress);
-        dymoProcess->setIpEntry(dest, gtw, mask, entry->routeDist);
+        dymoProcess->setIpEntry(dest, gtw, mask, entry->routeDist, ManetAddress::ZERO, IPv4Route::dDYMO);
     }
     else
     {

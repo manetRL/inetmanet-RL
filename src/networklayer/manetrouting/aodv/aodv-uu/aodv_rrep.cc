@@ -198,7 +198,7 @@ void NS_CLASS rrep_send(RREP * rrep, rt_table_t * rev_rt,
         if (useIndex)
             omnet_chg_rte(rev_rt->next_hop,rev_rt->next_hop, nm, 1,false,rev_rt->ifindex);
         else
-            omnet_chg_rte(rev_rt->next_hop,rev_rt->next_hop, nm, 1,false,DEV_NR(rev_rt->ifindex).ipaddr);
+            omnet_chg_rte(rev_rt->next_hop,rev_rt->next_hop, nm, 1,false,DEV_NR(rev_rt->ifindex).ipaddr, IPv4Route::dAODV);
     }
     totalRrepSend++;
 #endif

@@ -1290,7 +1290,7 @@ OLSR::rtable_computation()
         for (rtable_t::const_iterator itRtTable = rtable_.getInternalTable()->begin();itRtTable != rtable_.getInternalTable()->begin();++itRtTable)
         {
             nsaddr_t addr = itRtTable->first;
-            omnet_chg_rte(addr, addr,netmask,1, true, addr);
+            omnet_chg_rte(addr, addr,netmask,1, true, addr, IPv4Route::dOLSR);
         }
     }
     else
@@ -1323,7 +1323,8 @@ OLSR::rtable_computation()
                         omnet_chg_rte(link_tuple->nb_iface_addr(),
                                        link_tuple->nb_iface_addr(),
                                        netmask,
-                                       1, false, link_tuple->local_iface_addr());
+                                       1, false, link_tuple->local_iface_addr(),
+                                       IPv4Route::dOLSR);
                     else
                         omnet_chg_rte(link_tuple->nb_iface_addr(),
                                        link_tuple->nb_iface_addr(),
@@ -1345,7 +1346,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(nb_tuple->nb_main_addr(),
                                    lt->nb_iface_addr(),
                                    netmask,// Default mask
-                                   1, false, lt->local_iface_addr());
+                                   1, false, lt->local_iface_addr(),
+                                   IPv4Route::dOLSR);
 
                 else
                     omnet_chg_rte(nb_tuple->nb_main_addr(),
@@ -1394,7 +1396,8 @@ OLSR::rtable_computation()
                 omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
                                entry->next_addr(),
                                netmask,
-                               2, false, entry->iface_addr());
+                               2, false, entry->iface_addr(),
+                               IPv4Route::dOLSR);
 
             else
                 omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
@@ -1433,7 +1436,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(topology_tuple->dest_addr(),
                                    entry2->next_addr(),
                                    netmask,
-                                   h+1, false, entry2->iface_addr());
+                                   h+1, false, entry2->iface_addr(),
+                                   IPv4Route::dOLSR);
 
                 else
                     omnet_chg_rte(topology_tuple->dest_addr(),
@@ -1469,7 +1473,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(tuple->iface_addr(),
                                    entry1->next_addr(),
                                    netmask,
-                                   entry1->dist(), false, entry1->iface_addr());
+                                   entry1->dist(), false, entry1->iface_addr(),
+                                   IPv4Route::dOLSR);
 
                 else
                     omnet_chg_rte(tuple->iface_addr(),

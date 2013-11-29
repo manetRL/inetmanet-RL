@@ -135,7 +135,7 @@ rtable_entry_t *NS_CLASS rtable_insert(struct in_addr dest_addr,
     if (useIndex)
         omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,ifindex);
     else
-        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr);
+        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr, IPv4Route::dDYMO);
 #endif
 #endif  /* NS_PORT */
 
@@ -199,7 +199,7 @@ rtable_entry_t *NS_CLASS rtable_update(rtable_entry_t *entry,
     if (useIndex)
         omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,ifindex);
     else
-        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr);
+        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr, IPv4Route::dDYMO);
 
 
 #endif
@@ -496,7 +496,7 @@ rtable_entry_t *NS_CLASS rtable_insert(struct in_addr dest_addr,
     if (useIndex)
         omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,ifindex);
     else
-        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr);
+        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr, IPv4Route::dDYMO);
     // If there are buffered packets for this destination
     // now we send them
     std::vector<ManetAddress> list;
@@ -557,7 +557,7 @@ rtable_entry_t *NS_CLASS rtable_update(rtable_entry_t *entry,
     if (useIndex)
         omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,ifindex);
     else
-        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr);
+        omnet_chg_rte(dest_addr, nxthop_addr, netmask, hopcnt,false,DEV_NR(ifindex).ipaddr, IPv4Route::dDYMO);
 
     timer_remove(&entry->rt_validtimer);
     timer_remove(&entry->rt_deltimer);

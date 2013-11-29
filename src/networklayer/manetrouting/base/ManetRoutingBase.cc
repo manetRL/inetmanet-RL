@@ -649,9 +649,9 @@ void ManetRoutingBase::omnet_chg_rte(const struct in_addr &dst, const struct in_
 }
 
 void ManetRoutingBase::omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm,
-                                      short int hops, bool del_entry, const struct in_addr &iface)
+                                      short int hops, bool del_entry, const struct in_addr &iface, unsigned int AD)
 {
-    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry, iface.s_addr);
+    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry, iface.s_addr, AD);
 }
 
 bool ManetRoutingBase::omnet_exist_rte(struct in_addr dst)
@@ -662,7 +662,7 @@ bool ManetRoutingBase::omnet_exist_rte(struct in_addr dst)
     else return true;
 }
 
-void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface)
+void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface, unsigned int AD)
 {
     if (!isRegistered)
         opp_error("Manet routing protocol is not register");
@@ -736,7 +736,8 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 && oldentry->getGateway() == gateway
                 && oldentry->getMetric() == hops
                 && oldentry->getInterface() == ie
-                && oldentry->getSource() == routeSource)
+                && oldentry->getSource() == routeSource
+                && oldentry->getAdminDist() == AD)
             return;
         inet_rt->deleteRoute(oldentry);
     }
@@ -758,6 +759,7 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
     /// Source of route, MANUAL by reading a file,
     /// routing protocol name otherwise
     entry->setSource(routeSource);
+    entry->setAdminDist(AD);
     inet_rt->addRoute(entry);
 #ifdef WITH_80211MESH
     if (locator && locator->isApIp(desAddress))
@@ -790,6 +792,7 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
             /// Source of route, MANUAL by reading a file,
             /// routing protocol name otherwise
             entry->setSource(routeSource);
+            entry->setAdminDist(AD);
             inet_rt->addRoute(entry);
         }
     }
@@ -1333,7 +1336,7 @@ ManetAddress ManetRoutingBase::getNextHopInternal(const ManetAddress &dest)
     return ManetAddress::ZERO;
 }
 
-bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask)
+bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask, unsigned int AD)
 {
     if (!isRegistered)
         opp_error("Manet routing protocol is not register");
@@ -1435,6 +1438,8 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
     IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
     entry->setSource(routeSource);
 
+    entry->setAdminDist(AD);
+
     inet_rt->addRoute(entry);
 
 #ifdef WITH_80211MESH
@@ -1468,6 +1473,8 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
             /// Source of route, MANUAL by reading a file,
             /// routing protocol name otherwise
             e->setSource(entry->getSource());
+
+            e->setAdminDist(entry->getAdminDist());
             inet_rt->addRoute(e);
         }
     }

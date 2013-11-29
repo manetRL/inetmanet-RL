@@ -178,7 +178,7 @@ rt_table_t *NS_CLASS rt_table_insert(struct in_addr dest_addr,
         if (useIndex)
             omnet_chg_rte(dest_addr, next, nm, hops,false,ifindex);
         else
-            omnet_chg_rte(dest_addr, next, nm, hops,false,DEV_NR(ifindex).ipaddr);
+            omnet_chg_rte(dest_addr, next, nm, hops,false,DEV_NR(ifindex).ipaddr, IPv4Route::dAODV);
     }
 
 #ifdef CONFIG_GATEWAY_DISABLE
@@ -336,7 +336,7 @@ int NS_CLASS rt_table_invalidate(rt_table_t * rt)
     /* if delete is true fiels next, hops and mask are nor used */
     struct in_addr nm;
     nm.s_addr = ManetAddress(IPv4Address::ALLONES_ADDRESS);
-    omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, 0,true);
+    omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, 0,true, IPv4Route::dAODV);
 
 #ifdef CONFIG_GATEWAY
     /* If this was a gateway, check if any Internet destinations were using
@@ -429,7 +429,7 @@ void NS_CLASS rt_table_delete(rt_table_t * rt)
         /* if delete is true fiels next, hops and mask are nor used */
         struct in_addr nm;
         nm.s_addr = ManetAddress(IPv4Address::ALLONES_ADDRESS);
-        omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, 0,true);
+        omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, 0,true, IPv4Route::dAODV);
         rt_tbl.num_active--;
     }
     /* Make sure timers are removed... */
@@ -1270,7 +1270,7 @@ rt_table_t *NS_CLASS rt_table_update(rt_table_t * rt, struct in_addr next,
         if (useIndex)
             omnet_chg_rte(rt->dest_addr, next, nm, hops,false,rt->ifindex);
         else
-            omnet_chg_rte(rt->dest_addr, next, nm, hops,false,DEV_NR(rt->ifindex).ipaddr);
+            omnet_chg_rte(rt->dest_addr, next, nm, hops,false,DEV_NR(rt->ifindex).ipaddr, IPv4Route::dAODV);
 #endif
 #endif
 
@@ -1292,7 +1292,7 @@ rt_table_t *NS_CLASS rt_table_update(rt_table_t * rt, struct in_addr next,
         if (useIndex)
             omnet_chg_rte(rt->dest_addr, next, nm, hops,false,rt->ifindex);
         else
-            omnet_chg_rte(rt->dest_addr, next, nm, hops,false,DEV_NR(rt->ifindex).ipaddr);
+            omnet_chg_rte(rt->dest_addr, next, nm, hops,false,DEV_NR(rt->ifindex).ipaddr, IPv4Route::dAODV);
 #endif
 #endif
     }
