@@ -1326,7 +1326,7 @@ void DYMOUM::packetFailed(IPv4Datagram *dgram)
     {
         struct in_addr nm;
         nm.s_addr = ManetAddress(IPv4Address::ALLONES_ADDRESS);
-        omnet_chg_rte(dest_addr,dest_addr, nm,0,true);
+        omnet_chg_rte(dest_addr,dest_addr, nm,0,true, IPv4Route::dDYMO);
     }
     scheduleNextEvent();
 }

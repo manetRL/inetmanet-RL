@@ -28,7 +28,7 @@ module MultiManet extends WirelessHost
         @display("i=device/cellphone");
         wlan[*].mgmtType = default("Ieee80211MgmtAdhoc");  // use adhoc management
         IPForward = default(true);
-        bool hasManet = default(false); //Le typename possono essere: "AODVUU","DYMO","DSRUU","OLSR","OLSR_ETX","Batman" (Sono esclusi DYMOUM poiche' e' una vecchia versione di DYMO e DSDV_2 in quanto non funzionante)
+        bool hasManet = default(false); //Le typename possono essere: "AODVUU","DYMO","DSRUU","OLSR","OLSR_ETX","Batman","DSDV_2" (E' DYMOUM poiche' e' una vecchia versione di DYMO)
                                         //E' ALTAMENTE SCONSIGLIATO INSERIRE PIU' ISTANZE DELLO STESSO PROTOCOLLO COME ANCHE OLSR E OLSR_ETX CONTEMPORANEAMENTE.
         int numManet = default(0);
 

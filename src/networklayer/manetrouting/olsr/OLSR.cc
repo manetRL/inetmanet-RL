@@ -1329,7 +1329,8 @@ OLSR::rtable_computation()
                         omnet_chg_rte(link_tuple->nb_iface_addr(),
                                        link_tuple->nb_iface_addr(),
                                        netmask,
-                                       1, false, link_tuple->local_iface_index());
+                                       1, false, link_tuple->local_iface_index(),
+                                       IPv4Route::dOLSR);
 
                     if (link_tuple->nb_iface_addr() == nb_tuple->nb_main_addr())
                         nb_main_addr = true;
@@ -1353,7 +1354,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(nb_tuple->nb_main_addr(),
                                    lt->nb_iface_addr(),
                                    netmask,// Default mask
-                                   1, false, lt->local_iface_index());
+                                   1, false, lt->local_iface_index(),
+                                   IPv4Route::dOLSR);
             }
         }
     }
@@ -1403,7 +1405,8 @@ OLSR::rtable_computation()
                 omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
                                entry->next_addr(),
                                netmask,
-                               2, false, entry->local_iface_index());
+                               2, false, entry->local_iface_index(),
+                               IPv4Route::dOLSR);
 
         }
     }
@@ -1443,7 +1446,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(topology_tuple->dest_addr(),
                                    entry2->next_addr(),
                                    netmask,
-                                   h+1, false, entry2->local_iface_index());
+                                   h+1, false, entry2->local_iface_index(),
+                                   IPv4Route::dOLSR);
 
                 added = true;
             }
@@ -1480,7 +1484,8 @@ OLSR::rtable_computation()
                     omnet_chg_rte(tuple->iface_addr(),
                                    entry1->next_addr(),
                                    netmask,
-                                   entry1->dist(), false, entry1->local_iface_index());
+                                   entry1->dist(), false, entry1->local_iface_index(),
+                                   IPv4Route::dOLSR);
                 added = true;
             }
         }
@@ -2279,7 +2284,7 @@ OLSR::mac_failed(IPv4Datagram* p)
             nb_loss(link_tuple);
         }
     }
-    deleteIpEntry(dest_addr);
+    deleteIpEntry(dest_addr, IPv4Route::dOLSR);
 }
 
 ///

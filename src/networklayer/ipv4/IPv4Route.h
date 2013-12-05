@@ -64,6 +64,7 @@ class INET_API IPv4Route : public cObject
         dBATMAN = 132,
         dDYMO = 133,
         dDSR = 134,
+        dDSDV = 135,
         dEGP = 140,
         dODR = 160,
         dEIGRPExternal = 170,

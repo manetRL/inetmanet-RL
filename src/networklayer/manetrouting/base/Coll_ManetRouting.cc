@@ -9,6 +9,7 @@
 #include "IPv4InterfaceData.h"
 #include "UDPPacket_m.h"
 #include "dsr-pkt_omnet.h"
+#include "DSDVhello_m.h"
 
 using namespace std;
 
@@ -74,6 +75,11 @@ void Coll_ManetRouting::handleMessage(cMessage *msg) {
     else if (dynamic_cast<DSRPkt *>(msg) != NULL)         //check sui pacchetti del protocollo DSR
          {
              prot_name = "DSRUU";
+             SendToManet (msg, prot_name);
+         }
+    else if (dynamic_cast<DSDV_HelloMessage *>(msg) != NULL)         //check sui pacchetti del protocollo DSDV
+         {
+             prot_name = "DSDV_2";
              SendToManet (msg, prot_name);
          }
 }

@@ -138,7 +138,7 @@ void DYMO_RoutingTable::deleteRoute(DYMO_RoutingEntry *entry)
         {
             routeVector.erase(iter);
             ManetAddress dest(entry->routeAddress);
-            dymoProcess->omnet_chg_rte(dest, dest, dest, 0, true);
+            dymoProcess->omnet_chg_rte(dest, dest, dest, 0, true, IPv4Route::dDYMO);
             //updateDisplayString();
             delete entry;
             return;
@@ -232,7 +232,7 @@ void DYMO_RoutingTable::maintainAssociatedRoutingEntryFor(DYMO_RoutingEntry* ent
     }
     else
     {
-        dymoProcess->deleteIpEntry(dest);
+        dymoProcess->deleteIpEntry(dest, IPv4Route::dDYMO);
     }
 }
 

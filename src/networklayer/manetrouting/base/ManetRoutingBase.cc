@@ -277,6 +277,7 @@ void ManetRoutingBase::registerRoutingModule()
     // One enabled network interface (in total)
     // clear routing entries related to wlan interfaces and autoassign ip adresses
     bool manetPurgeRoutingTables = (bool) par("manetPurgeRoutingTables");
+    bool deleteInterfaceRoute = (bool) par("deleteInterfaceRoute");
     if (manetPurgeRoutingTables && !mac_layer_)
     {
         IPv4Route *entry;
@@ -291,6 +292,24 @@ void ManetRoutingBase::registerRoutingModule()
             }
         }
     }
+
+//# NT:04/12/2013
+//# Aggiunto codice per permettere la cancellazione della rotta all'indirizzo di rete dell'interfaccia wlan
+    if (deleteInterfaceRoute && !mac_layer_)
+    {
+        IPv4Route *entry;
+
+        for (int i=inet_rt->getNumRoutes()-1; i>=0; i--)
+        {
+             entry = inet_rt->getRoute(i);
+             const InterfaceEntry *ie = entry->getInterface();
+             if (strstr(ie->getName(), "wlan")!=NULL && entry->getSource() == IPv4Route::IFACENETMASK)
+             {
+                 inet_rt->deleteRoute(entry);
+             }
+         }
+    }
+//############################################################################################################
     if (par("autoassignAddress") && !mac_layer_)
     {
         IPv4Address AUTOASSIGN_ADDRESS_BASE(par("autoassignAddressBase").stringValue());
@@ -643,9 +662,9 @@ void ManetRoutingBase::sendToIp(cPacket *msg, int srcPort, const ManetAddress& d
 
 
 void ManetRoutingBase::omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm,
-                                      short int hops, bool del_entry)
+                                      short int hops, bool del_entry, unsigned int AD)
 {
-    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry);
+    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry, 0, AD);
 }
 
 void ManetRoutingBase::omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm,
@@ -684,13 +703,40 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
         {
             if (del_entry && !found)
             {
-                if (!inet_rt->deleteRoute(e))
-                    opp_error("Aodv omnet_chg_rte can't delete route entry");
+                if (e->getAdminDist() == AD)
+                {
+                    if (!inet_rt->deleteRoute(e))
+                        opp_error("Aodv omnet_chg_rte can't delete route entry");
+                }
             }
             else
             {
                 found = true;
                 oldentry = e;
+
+                IPv4Address netmask(netm.getIPv4());
+                IPv4Address gateway(gtwy.getIPv4());
+
+                // The default mask is for manet routing is  IPv4Address::ALLONES_ADDRESS
+                if (netm.isUnspecified())
+                    netmask = IPv4Address::ALLONES_ADDRESS;
+
+                InterfaceEntry *ie = getInterfaceWlanByAddress(iface);
+                IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
+
+                if (found)
+                {
+                    if (oldentry->getDestination() == desAddress
+                            && oldentry->getNetmask() == netmask
+                            && oldentry->getGateway() == gateway
+                            && oldentry->getMetric() == hops
+                            && oldentry->getInterface() == ie
+                            && oldentry->getSource() == routeSource
+                            && oldentry->getAdminDist() == AD)
+                        return;
+                    if (oldentry->getAdminDist() == AD)
+                        inet_rt->deleteRoute(oldentry);
+                }
             }
         }
     }
@@ -707,10 +753,13 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 IPv4Route *e = inet_rt->getRoute(i-1);
                 if (list[i] == e->getDestination())
                 {
-                    if (!inet_rt->deleteRoute(e))
-                        opp_error("Aodv omnet_chg_rte can't delete route entry");
-                    else
-                        break;
+                    if (e->getAdminDist() == AD)
+                    {
+                        if (!inet_rt->deleteRoute(e))
+                            opp_error("Aodv omnet_chg_rte can't delete route entry");
+                        else
+                            break;
+                    }
                 }
             }
         }
@@ -729,7 +778,7 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
     InterfaceEntry *ie = getInterfaceWlanByAddress(iface);
     IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
 
-    if (found)
+    /*if (found)
     {
         if (oldentry->getDestination() == desAddress
                 && oldentry->getNetmask() == netmask
@@ -739,8 +788,9 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 && oldentry->getSource() == routeSource
                 && oldentry->getAdminDist() == AD)
             return;
-        inet_rt->deleteRoute(oldentry);
-    }
+        if (oldentry->getAdminDist() == AD)
+            inet_rt->deleteRoute(oldentry);
+    }*/
 
     IPv4Route *entry = new IPv4Route();
 
@@ -801,13 +851,13 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
 
 // This methods use the nic index to identify the output nic.
 void ManetRoutingBase::omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm,
-                                      short int hops, bool del_entry, int index)
+                                      short int hops, bool del_entry, int index, unsigned int AD)
 {
-    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry, index);
+    omnet_chg_rte(dst.s_addr, gtwy.s_addr, netm.s_addr, hops, del_entry, index, AD);
 }
 
 
-void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, int index)
+void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, int index, unsigned int AD)
 {
     if (!isRegistered)
         opp_error("Manet routing protocol is not register");
@@ -828,13 +878,38 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
         {
             if (del_entry && !found)
             {
-                if (!inet_rt->deleteRoute(e))
-                    opp_error("Aodv omnet_chg_rte can't delete route entry");
+                if (e->getAdminDist() == AD)
+                {
+                    if (!inet_rt->deleteRoute(e))
+                        opp_error("Aodv omnet_chg_rte can't delete route entry");
+                }
             }
             else
             {
                 found = true;
                 oldentry = e;
+
+                IPv4Address netmask(netm.getIPv4());
+                IPv4Address gateway(gtwy.getIPv4());
+                if (netm.isUnspecified())
+                    netmask = IPv4Address::ALLONES_ADDRESS;
+
+                InterfaceEntry *ie = getInterfaceEntry(index);
+                IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
+
+                if (found)
+                {
+                    if (oldentry->getDestination() == desAddress
+                            && oldentry->getNetmask() == netmask
+                            && oldentry->getGateway() == gateway
+                            && oldentry->getMetric() == hops
+                            && oldentry->getInterface() == ie
+                            && oldentry->getSource() == routeSource
+                            && oldentry->getAdminDist() == AD)
+                        return;
+                    if (oldentry->getAdminDist() == AD)
+                        inet_rt->deleteRoute(oldentry);
+                }
             }
         }
     }
@@ -851,10 +926,13 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 IPv4Route *e = inet_rt->getRoute(i - 1);
                 if (list[i] == e->getDestination())
                 {
-                    if (!inet_rt->deleteRoute(e))
-                        opp_error("Aodv omnet_chg_rte can't delete route entry");
-                    else
-                        break;
+                    if (e->getAdminDist() == AD)
+                    {
+                        if (!inet_rt->deleteRoute(e))
+                            opp_error("Aodv omnet_chg_rte can't delete route entry");
+                        else
+                            break;
+                    }
                 }
             }
         }
@@ -871,17 +949,19 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
     InterfaceEntry *ie = getInterfaceEntry(index);
     IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
 
-    if (found)
+    /*if (found)
     {
         if (oldentry->getDestination() == desAddress
                 && oldentry->getNetmask() == netmask
                 && oldentry->getGateway() == gateway
                 && oldentry->getMetric() == hops
                 && oldentry->getInterface() == ie
-                && oldentry->getSource() == routeSource)
+                && oldentry->getSource() == routeSource
+                && oldentry->getAdminDist() == AD)
             return;
-        inet_rt->deleteRoute(oldentry);
-    }
+        if (oldentry->getAdminDist() == AD)
+            inet_rt->deleteRoute(oldentry);
+    }*/
 
     IPv4Route *entry = new IPv4Route();
 
@@ -904,6 +984,7 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
         entry->setSource(IPv4Route::MANET);
     else
         entry->setSource(IPv4Route::MANET2);
+    entry->setAdminDist(AD);
 
         inet_rt->addRoute(entry);
 
@@ -938,6 +1019,7 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
             /// Source of route, MANUAL by reading a file,
             /// routing protocol name otherwise
             e->setSource(entry->getSource());
+            e->setAdminDist(entry->getAdminDist());
             inet_rt->addRoute(e);
         }
     }
@@ -1366,13 +1448,35 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
         {
             if (del_entry && !found)    // FIXME The 'found' never set to true when 'del_entry' is true
             {
-                if (!inet_rt->deleteRoute(e))
-                    opp_error("ManetRoutingBase::setRoute can't delete route entry");
+                if (e->getAdminDist() == AD)
+                {
+                    if (!inet_rt->deleteRoute(e))
+                        opp_error("ManetRoutingBase::setRoute can't delete route entry");
+                }
             }
             else
             {
                 found = true;
                 oldentry = e;
+
+                IPv4Address netmask(mask.getIPv4());
+                    IPv4Address gateway(nextHop.getIPv4());
+                    if (mask.isUnspecified())
+                        netmask = IPv4Address::ALLONES_ADDRESS;
+                    InterfaceEntry *ie = getInterfaceEntry(ifaceIndex);
+
+                    if (found)
+                    {
+                        if (oldentry->getDestination() == desAddress
+                                && oldentry->getNetmask() == netmask
+                                && oldentry->getGateway() == gateway
+                                && oldentry->getMetric() == hops
+                                && oldentry->getInterface() == ie
+                                && oldentry->getSource() == IPv4Route::MANUAL)
+                            return true;
+                        if (oldentry->getAdminDist() == AD)
+                            inet_rt->deleteRoute(oldentry);
+                    }
             }
         }
     }
@@ -1389,10 +1493,13 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
                 IPv4Route *e = inet_rt->getRoute(i - 1);
                 if (list[i] == e->getDestination())
                 {
-                    if (!inet_rt->deleteRoute(e))
-                        opp_error("Aodv omnet_chg_rte can't delete route entry");
-                    else
-                        break;
+                    if (e->getAdminDist() == AD)
+                    {
+                        if (!inet_rt->deleteRoute(e))
+                            opp_error("Aodv omnet_chg_rte can't delete route entry");
+                        else
+                            break;
+                    }
                 }
             }
         }
@@ -1407,7 +1514,7 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
         netmask = IPv4Address::ALLONES_ADDRESS;
     InterfaceEntry *ie = getInterfaceEntry(ifaceIndex);
 
-    if (found)
+   /* if (found)
     {
         if (oldentry->getDestination() == desAddress
                 && oldentry->getNetmask() == netmask
@@ -1417,7 +1524,7 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
                 && oldentry->getSource() == IPv4Route::MANUAL)
             return true;
         inet_rt->deleteRoute(oldentry);
-    }
+    }*/
 
     IPv4Route *entry = new IPv4Route();
 
