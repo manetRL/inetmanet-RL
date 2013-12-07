@@ -1,4 +1,7 @@
 //
+//   Copyright (C) 2013 by Nunzio Torto
+//   Università degli studi L'Aquila
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
@@ -13,14 +16,19 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
+ 
 package inet.nodes.inet;
 
 import inet.networklayer.IManetRouting;
 import inet.networklayer.manetrouting.Coll_ManetRouting;
 
+// Tale modulo svolge le stesse funzioni del modulo AdhocHost con l'aggiunta
+// del supporto di poter utilizzare più protocolli di routing manet.
+
+// This module has the same functions of AdhocHost but also support the use
+// of multiple manet routing protocols.
 
 
-//
 module MultiManet extends WirelessHost
 {
     parameters:

@@ -1,4 +1,7 @@
 //
+//   Copyright (C) 2013 by Nunzio Torto
+//   Università degli studi L'Aquila
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
@@ -14,6 +17,12 @@
 // 
 
 package inet.networklayer.manetrouting;
+
+// Tale modulo serve a consegnare i messaggi dei vari protocolli di routing manet
+// ai moduli appropriati.
+
+// This module delivers the messages of the various manet routing protocols 
+// to the appropriate modules. 
 
 simple Coll_ManetRouting
 {
