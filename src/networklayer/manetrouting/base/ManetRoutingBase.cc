@@ -724,19 +724,17 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 InterfaceEntry *ie = getInterfaceWlanByAddress(iface);
                 IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
 
-                if (found)
-                {
-                    if (oldentry->getDestination() == desAddress
-                            && oldentry->getNetmask() == netmask
-                            && oldentry->getGateway() == gateway
-                            && oldentry->getMetric() == hops
-                            && oldentry->getInterface() == ie
-                            && oldentry->getSource() == routeSource
-                            && oldentry->getAdminDist() == AD)
-                        return;
-                    if (oldentry->getAdminDist() == AD)
-                        inet_rt->deleteRoute(oldentry);
-                }
+                if (oldentry->getDestination() == desAddress
+                        && oldentry->getNetmask() == netmask
+                        && oldentry->getGateway() == gateway
+                        && oldentry->getMetric() == hops
+                        && oldentry->getInterface() == ie
+                        && oldentry->getSource() == routeSource
+                        && oldentry->getAdminDist() == AD)
+                    return;
+                if (oldentry->getAdminDist() == AD)
+                    inet_rt->deleteRoute(oldentry);
+
             }
         }
     }
@@ -897,19 +895,17 @@ void ManetRoutingBase::omnet_chg_rte(const ManetAddress &dst, const ManetAddress
                 InterfaceEntry *ie = getInterfaceEntry(index);
                 IPv4Route::RouteSource routeSource = useManetLabelRouting ? IPv4Route::MANET : IPv4Route::MANET2;
 
-                if (found)
-                {
-                    if (oldentry->getDestination() == desAddress
-                            && oldentry->getNetmask() == netmask
-                            && oldentry->getGateway() == gateway
-                            && oldentry->getMetric() == hops
-                            && oldentry->getInterface() == ie
-                            && oldentry->getSource() == routeSource
-                            && oldentry->getAdminDist() == AD)
-                        return;
-                    if (oldentry->getAdminDist() == AD)
-                        inet_rt->deleteRoute(oldentry);
-                }
+                if (oldentry->getDestination() == desAddress
+                        && oldentry->getNetmask() == netmask
+                        && oldentry->getGateway() == gateway
+                        && oldentry->getMetric() == hops
+                        && oldentry->getInterface() == ie
+                        && oldentry->getSource() == routeSource
+                        && oldentry->getAdminDist() == AD)
+                    return;
+                if (oldentry->getAdminDist() == AD)
+                    inet_rt->deleteRoute(oldentry);
+
             }
         }
     }
@@ -1465,18 +1461,16 @@ bool ManetRoutingBase::setRoute(const ManetAddress & destination, const ManetAdd
                         netmask = IPv4Address::ALLONES_ADDRESS;
                     InterfaceEntry *ie = getInterfaceEntry(ifaceIndex);
 
-                    if (found)
-                    {
-                        if (oldentry->getDestination() == desAddress
-                                && oldentry->getNetmask() == netmask
-                                && oldentry->getGateway() == gateway
-                                && oldentry->getMetric() == hops
-                                && oldentry->getInterface() == ie
-                                && oldentry->getSource() == IPv4Route::MANUAL)
-                            return true;
-                        if (oldentry->getAdminDist() == AD)
-                            inet_rt->deleteRoute(oldentry);
-                    }
+                    if (oldentry->getDestination() == desAddress
+                            && oldentry->getNetmask() == netmask
+                            && oldentry->getGateway() == gateway
+                            && oldentry->getMetric() == hops
+                            && oldentry->getInterface() == ie
+                            && oldentry->getSource() == IPv4Route::MANUAL)
+                        return true;
+                    if (oldentry->getAdminDist() == AD)
+                        inet_rt->deleteRoute(oldentry);
+
             }
         }
     }
