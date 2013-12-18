@@ -1294,7 +1294,7 @@ OLSR::rtable_computation()
         }
     }
     else
-        omnet_clean_rte(); // clean IP tables
+        omnet_clean_olsr_rte(); // clean OLSR entry in IP tables
 
     rtable_.clear();
 

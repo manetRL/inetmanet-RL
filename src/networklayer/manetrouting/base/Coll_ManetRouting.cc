@@ -22,6 +22,9 @@
 #include <omnetpp.h>
 #include <map>
 
+#include "IPv4ControlInfo.h"
+#include "IPv4.h"
+#include "ICMPMessage_m.h"
 #include "Coll_ManetRouting.h"
 #include "IPv4ControlInfo.h"
 #include "IPv4Datagram.h"
@@ -69,6 +72,7 @@ void Coll_ManetRouting::handleMessage(cMessage *msg) {
                      if (strcmp(pack->getName(), "OLSR_ETX pkt") == 0)      //Controllo inserito poichè OLSR_ETX ha stesso numero di porta udp di OLSR
                          prot_name = "OLSR_ETX";
                      SendToManet(msg, prot_name);
+                     return;
                  }
              }
          }
@@ -101,19 +105,46 @@ void Coll_ManetRouting::handleMessage(cMessage *msg) {
              prot_name = "DSDV_2";
              SendToManet (msg, prot_name);
          }
+    else if (dynamic_cast<ICMPMessage *>(msg) != NULL)               //check sui pacchetti ICMP
+         {
+             ICMPMessage *mess = (ICMPMessage *)msg;
+             UDPPacket *pack = check_and_cast<UDPPacket *>(mess->getEncapsulatedPacket()->getEncapsulatedPacket());
+
+             for (it = protocol.begin(); it != protocol.end(); ++it)
+             {
+                  if (pack->getDestinationPort() == it->first)
+                  {
+                      prot_name = it->second;
+
+                      if (strcmp(pack->getName(), "OLSR_ETX pkt") == 0)
+                          prot_name = "OLSR_ETX";
+
+                      SendToManet(msg, prot_name);
+                      return;
+                  }
+             }
+         }
 }
 
 
 void Coll_ManetRouting::SendToManet(cMessage *msg, string prot_name)      //Trova il gate appropriato del modulo a cui deve essere inviato il pacchetto e lo invia.
 {
-    int i=0;
-    cModule *owner = gate("forward_toManet", 0)->getNextGate()->getOwnerModule();
-    while(strcmp(owner->getClassName(), prot_name.c_str()) != 0)
+    int size = gate("forward_toManet", 0)->getVectorSize();
+
+    for (int i=0; i<size; i++)
     {
-         if(strcmp(prot_name.c_str(), "DYMO") == 0 && strcmp(owner->getClassName(), "DYMOUM") == 0)
-             break;
-         i++;
-         owner = gate("forward_toManet", i)->getNextGate()->getOwnerModule();
+        cModule *owner = gate("forward_toManet", i)->getNextGate()->getOwnerModule();
+        if(strcmp(owner->getClassName(), prot_name.c_str()) == 0)
+        {
+            send(msg, "forward_toManet", i);
+            return;
+        }
+        else if(strcmp(prot_name.c_str(), "DYMO") == 0 && strcmp(owner->getClassName(), "DYMOUM") == 0)
+        {
+            send(msg, "forward_toManet", i);
+            return;
+        }
     }
-    send(msg, "forward_toManet", i);
+    delete msg;            //Viene eseguita solo quando il modulo a cui è indirizzato il pacchetto non è presente
+
 }

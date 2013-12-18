@@ -1071,6 +1071,28 @@ void ManetRoutingBase::omnet_clean_rte()
 }
 
 //
+// Erase all the entries of OLSR protocol in the routing table
+//
+void ManetRoutingBase::omnet_clean_olsr_rte()
+{
+    if (!isRegistered)
+        opp_error("Manet routing protocol is not register");
+
+    IPv4Route *entry;
+    if (mac_layer_)
+        return;
+    // clean the route table wlan interface entry
+    for (int i=inet_rt->getNumRoutes()-1; i>=0; i--)
+    {
+        entry = inet_rt->getRoute(i);
+        if (strstr(entry->getInterface()->getName(), "wlan")!=NULL && entry->getAdminDist() == IPv4Route::dOLSR)
+        {
+            inet_rt->deleteRoute(entry);
+        }
+    }
+}
+
+//
 // generic receiveChangeNotification, the protocols must implemet processLinkBreak and processPromiscuous only
 //
 void ManetRoutingBase::receiveChangeNotification(int category, const cObject *details)
