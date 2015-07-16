@@ -43,7 +43,7 @@
 
 Define_Module(IPv6NeighbourDiscovery);
 
-simsignal_t IPv6NeighbourDiscovery::startDADSignal = SIMSIGNAL_NULL;
+simsignal_t IPv6NeighbourDiscovery::startDADSignal = registerSignal("startDAD");
 
 IPv6NeighbourDiscovery::IPv6NeighbourDiscovery()
     : neighbourCache(*this)
@@ -63,6 +63,8 @@ IPv6NeighbourDiscovery::~IPv6NeighbourDiscovery()
 
 void IPv6NeighbourDiscovery::initialize(int stage)
 {
+    cSimpleModule::initialize(stage);
+
     // We have to wait until the 3rd stage (stage 2) with scheduling messages,
     // because interface registration and IPv6 configuration takes places
     // in the first two stages.
@@ -108,17 +110,16 @@ void IPv6NeighbourDiscovery::initialize(int stage)
                 createRATimer(ie);
             }
         }
+
         //This simulates random node bootup time. Link local address assignment
         //takes place during this time.
         cMessage *msg = new cMessage("assignLinkLocalAddr", MK_ASSIGN_LINKLOCAL_ADDRESS);
-        //We want routers to boot up faster!
 
+        //We want routers to boot up faster!
         if (rt6->isRouter())
             scheduleAt(simTime() + uniform(0, 0.3), msg); //Random Router bootup time
         else
             scheduleAt(simTime() + uniform(0.4, 1), msg); //Random Host bootup time
-
-        startDADSignal = registerSignal("startDAD");
     }
 }
 
@@ -940,9 +941,6 @@ void IPv6NeighbourDiscovery::makeTentativeAddressPermanent(const IPv6Address& te
         }
 
         dadGlobalList.erase(it->first);
-#ifdef WITH_HIP
-        NotificationBoardAccess().get()->fireChangeNotification(NF_IPv6_HANDOVER_OCCURRED, NULL);
-#endif
     }
 
     // an optimization to make sure that the access router on the link gets our L2 address
@@ -2629,10 +2627,6 @@ void IPv6NeighbourDiscovery::processRAPrefixInfoForAddrAutoConf(
                 // if the link local address is tentative, then we make the global unicast address tentative as well
                 ie->ipv6Data()->assignAddress(newAddr, isLinkLocalTentative,
                         simTime() + validLifetime, simTime() + preferredLifetime, hFlag);
-#ifdef WITH_HIP
-                if(!isLinkLocalTentative)
-                    NotificationBoardAccess().get()->fireChangeNotification(NF_IPv6_HANDOVER_OCCURRED, NULL);
-#endif
             }
             else
             {

@@ -22,24 +22,35 @@
 #include <cownedobject.h>
 #include <vector>
 #include <map>
+#include <deque>
 #include "Coord.h"
 #include "MACAddress.h"
 #include "IPv4Address.h"
+#include "dijktraKShortest.h"
 
 class IInterfaceTable;
 class IMobility;
 
+typedef std::vector<MACAddress> RouteMac;
+typedef std::vector<RouteMac> KroutesMac;
+typedef std::vector<IPv4Address> RouteIp;
+typedef std::vector<RouteIp> KroutesIp;
+
 class WirelessNumHops : public cOwnedObject
 {
+        int limitKshort;
         struct nodeInfo
         {
             IMobility* mob;
             IInterfaceTable* itable;
+            std::vector<MACAddress> macAddress;
+            std::vector<IPv4Address> ipAddress;
         };
         struct LinkPair
         {
             int node1;
             int node2;
+            double cost;
             LinkPair()
             {
                 node1 = node2 = -1;
@@ -48,12 +59,21 @@ class WirelessNumHops : public cOwnedObject
             {
                 node1 = i;
                 node2 = j;
+                cost = -1;
+            }
+
+            LinkPair(int i, int j,double c)
+            {
+                node1 = i;
+                node2 = j;
+                cost = c;
             }
 
             LinkPair& operator=(const LinkPair& val)
             {
                 this->node1 = val.node1;
                 this->node2 = val.node2;
+                this->cost = val.cost;
                 return *this;
             }
         };
@@ -61,13 +81,16 @@ class WirelessNumHops : public cOwnedObject
         std::vector<nodeInfo> vectorList;
         std::map<MACAddress,int> related;
         std::map<IPv4Address,int> relatedIp;
-        typedef std::map<MACAddress,std::vector<MACAddress> > RouteCache;
-        typedef std::map<IPv4Address,std::vector<IPv4Address> > RouteCacheIp;
+        typedef std::map<MACAddress,std::deque<MACAddress> > RouteCacheMac;
+        typedef std::map<IPv4Address,std::deque<IPv4Address> > RouteCacheIp;
 
         typedef std::set<LinkPair> LinkCache;
-        RouteCache routeCache;
         RouteCacheIp routeCacheIp;
         LinkCache linkCache;
+        RouteCacheMac routeCacheMac;
+        bool staticScenario;
+        DijkstraKshortest *kshortest;
+
     protected:
         enum StateLabel {perm,tent};
         class DijkstraShortest
@@ -78,6 +101,8 @@ class WirelessNumHops : public cOwnedObject
             public:
                 int iD;
                 unsigned int cost;
+                double costAdd;
+                double costMax;
                 SetElem()
                 {
                     iD = -1;
@@ -86,28 +111,61 @@ class WirelessNumHops : public cOwnedObject
                 {
                     this->iD=val.iD;
                     this->cost = val.cost;
+                    this->costAdd = val.costAdd;
+                    this->costMax = val.costMax;
                     return *this;
                 }
-
+                bool operator<(const SetElem& val)
+                {
+                    if (this->cost > val.cost)
+                        return false;
+                    if (this->cost < val.cost)
+                        return true;
+                    if (this->costAdd < val.costAdd)
+                        return true;
+                    if (this->costMax < val.costMax)
+                       return true;
+                    return false;
+                }
+                bool operator>(const SetElem& val)
+                {
+                    if (this->cost < val.cost)
+                        return false;
+                    if (this->cost > val.cost)
+                        return true;
+                    if (this->costAdd > val.costAdd)
+                        return true;
+                    if (this->costMax > val.costMax)
+                       return true;
+                    return false;
+                }
             };
             class State
             {
             public:
                 unsigned int cost;
+                double costAdd;
+                double costMax;
                 int idPrev;
                 StateLabel label;
                 State();
                 State(const unsigned int &cost);
+                State(const unsigned int &cost, const double &cost1, const double &cost2);
                 void setCostVector(const unsigned int &cost);
+                void setCostVector(const unsigned int &cost, const double &cost1, const double &cost2);
             };
 
             struct Edge
             {
                 int last_node_; // last node to reach node X
                 unsigned int cost;
+                double costAdd;
+                double costMax;
                 Edge()
                 {
                     cost = 200000;
+                    costAdd = 1e30;
+                    costMax = 1e30;
                 }
             };
         };
@@ -122,14 +180,19 @@ class WirelessNumHops : public cOwnedObject
 
         virtual void cleanLinkArray();
         virtual void addEdge (const int & dest_node, const int & last_node,unsigned int cost);
-        virtual bool getRoute(const int &nodeId,std::vector<int> &pathNode);
+        virtual void addEdge (const int & originNode, const int & last_node,unsigned int cost, double costAdd, double costMax);
+        virtual bool getRoute(const int &nodeId,std::deque<int> &);
+        virtual bool getRouteCost(const int &nodeId,std::deque<int> &,double &costAdd, double &costMax);
         virtual void setRoot(const int & dest_node);
-        virtual void run();
         virtual void runUntil (const int &);
         virtual int getIdNode(const MACAddress &add);
         virtual int getIdNode(const  IPv4Address &add);
-        virtual void fillRoutingTables(const double &tDistance);
-        virtual bool findRoute(const double &, const int &dest,std::vector<int> &pathNode);
+        virtual std::deque<int> getRoute(int i);
+
+        virtual bool findRoutePath(const int &dest,std::deque<int> &pathNode);
+        virtual bool findRoutePathCost(const int &nodeId,std::deque<int> &pathNode,double &costAdd, double &costMax);
+        virtual void setIpRoutingTable(const IPv4Address &root, const IPv4Address &desAddress, const IPv4Address &gateway,  int hops);
+        virtual void setIpRoutingTable(const IPv4Address &desAddress, const IPv4Address &gateway,  int hops);
 
     public:
         friend bool operator < (const WirelessNumHops::LinkPair& x, const WirelessNumHops::LinkPair& y );
@@ -139,11 +202,25 @@ class WirelessNumHops : public cOwnedObject
         friend bool operator > ( const WirelessNumHops::DijkstraShortest::SetElem& x, const WirelessNumHops::DijkstraShortest::SetElem& y );
         friend bool operator == ( const WirelessNumHops::DijkstraShortest::SetElem& x, const WirelessNumHops::DijkstraShortest::SetElem& y );
 
+        virtual void fillRoutingTables(const double &tDistance);
+        virtual void fillRoutingTablesWitCost(const double &tDistance);
+
         WirelessNumHops();
         virtual ~WirelessNumHops();
         virtual void reStart();
-        virtual bool findRoute(const double &, const MACAddress &dest,std::vector<MACAddress> &pathNode);
-        virtual bool findRoute(const double &, const IPv4Address &dest,std::vector<IPv4Address> &pathNode);
+        virtual bool findRouteWithCost(const double &, const MACAddress &,std::deque<MACAddress> &, bool withCost, double &costAdd, double &costMax);
+        virtual bool findRouteWithCost(const double &, const IPv4Address &,std::deque<IPv4Address> &, bool withCost, double &costAdd, double &costMax);
+
+        virtual bool findRoute(const double &dist, const MACAddress &dest,std::deque<MACAddress> &pathNode)
+        {
+            double cost1,cost2;
+            return findRouteWithCost(dist, dest,pathNode, false, cost1, cost2);
+        }
+        virtual bool findRoute(const double &dist, const IPv4Address &dest,std::deque<IPv4Address> &pathNode)
+        {
+            double cost1,cost2;
+            return findRouteWithCost(dist, dest,pathNode, false, cost1, cost2);
+        }
 
         virtual void setRoot(const MACAddress & dest_node)
         {
@@ -160,6 +237,14 @@ class WirelessNumHops : public cOwnedObject
             runUntil(getIdNode(target));
         }
 
+        virtual void run();
+
+        virtual unsigned int getNumRoutes() {return routeMap.size();}
+
+        virtual void getRoute(int ,std::deque<IPv4Address> &pathNode);
+
+        virtual void getRoute(int ,std::deque<MACAddress> &pathNode);
+
         virtual Coord getPos(const int &node);
 
         virtual Coord getPos(const IPv4Address &node)
@@ -174,6 +259,20 @@ class WirelessNumHops : public cOwnedObject
 
         virtual void getNeighbours(const IPv4Address &node, std::vector<IPv4Address>&, const double &distance);
         virtual void getNeighbours(const MACAddress &node, std::vector<MACAddress>&, const double &distance);
+
+        void setStaticScenario(bool val) {staticScenario = val;}
+        virtual void setIpRoutingTable();
+        virtual void activateKshortest(int limit = 5)
+        {
+            if (kshortest)
+                delete kshortest;
+            limitKshort = limit;
+            kshortest = new DijkstraKshortest(limit);
+        }
+
+        virtual bool getKshortest(const MACAddress &,KroutesMac &);
+        virtual bool getKshortest(const IPv4Address &, KroutesIp&);
+
 };
 
 

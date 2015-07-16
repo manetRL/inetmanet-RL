@@ -9,11 +9,23 @@ import string
 import subprocess
 
 # configuration
-since = '2012-08-07'
+since = '2014-03-19'
 entriesToIgnore = [
-"""2012-09-13  Zoltan Bojthe
+"""2014-03-12  Rudolf Hornig
 
-	tab to space, remove trailing spaces
+    updated changelogs for v2.3
+
+""",
+"""2014-03-14  Rudolf Hornig
+
+    Revert "updated changelogs for v2.3"
+
+    This reverts commit 1bf7ee83a4677760c23c55cb7ce2b004a2bde193.
+
+""",
+"""2014-02-05  Zoltan Bojthe
+
+    backport: reduce differences in code
 
 """,
 ]

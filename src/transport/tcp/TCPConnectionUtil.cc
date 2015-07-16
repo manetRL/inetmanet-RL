@@ -2,6 +2,7 @@
 // Copyright (C) 2004 Andras Varga
 // Copyright (C) 2009-2011 Thomas Reschka
 // Copyright (C) 2011 Zoltan Bojthe
+// Copyright (C) 2015 Martin Becke
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public License
@@ -72,6 +73,7 @@ const char *TCPConnection::eventName(int event)
         CASE(TCP_E_CLOSE);
         CASE(TCP_E_ABORT);
         CASE(TCP_E_STATUS);
+        CASE(TCP_E_QUEUE_BYTES_LIMIT);
         CASE(TCP_E_RCV_DATA);
         CASE(TCP_E_RCV_ACK);
         CASE(TCP_E_RCV_SYN);
@@ -103,6 +105,7 @@ const char *TCPConnection::indicationName(int code)
         CASE(TCP_I_CONNECTION_RESET);
         CASE(TCP_I_TIMED_OUT);
         CASE(TCP_I_STATUS);
+        CASE(TCP_I_SEND_MSG);
     }
     return s;
 #undef CASE
@@ -292,13 +295,14 @@ void TCPConnection::signalConnectionTimeout()
     sendIndicationToApp(TCP_I_TIMED_OUT);
 }
 
-void TCPConnection::sendIndicationToApp(int code)
+void TCPConnection::sendIndicationToApp(int code, const int id)
 {
     tcpEV << "Notifying app: " << indicationName(code) << "\n";
     cMessage *msg = new cMessage(indicationName(code));
     msg->setKind(code);
     TCPCommand *ind = new TCPCommand();
     ind->setConnId(connId);
+    ind->setUserId(id);
     msg->setControlInfo(ind);
     sendToApp(msg);
 }
@@ -660,6 +664,16 @@ void TCPConnection::sendSegment(uint32 bytes)
 
     // send it
     sendToIP(tcpseg);
+
+    // let application fill queue again, if there is space
+    const uint32 alreadyQueued = sendQueue->getBytesAvailable(sendQueue->getBufferStartSeq());
+    const uint32 abated        = (state->sendQueueLimit > alreadyQueued) ? state->sendQueueLimit - alreadyQueued : 0;
+    if ((state->sendQueueLimit > 0) && !state->queueUpdate && (abated >= state->snd_mss)) // request more data if space >= 1 MSS
+    {
+        // Tell upper layer readiness to accept more data
+        sendIndicationToApp(TCP_I_SEND_MSG, abated);
+        state->queueUpdate = true;
+    }
 }
 
 bool TCPConnection::sendData(bool fullSegmentsOnly, uint32 congestionWindow)
@@ -1405,15 +1419,11 @@ unsigned short TCPConnection::updateRcvWnd()
 
     // scale rcv_wnd:
     uint32 scaled_rcv_wnd = state->rcv_wnd;
-    state->rcv_wnd_scale = 0;
-
-    if (state->ws_enabled)
-    {
-        while (scaled_rcv_wnd > TCP_MAX_WIN && state->rcv_wnd_scale < 14) // RFC 1323, page 11: "the shift count must be limited to 14"
-        {
-            scaled_rcv_wnd = scaled_rcv_wnd >> 1;
-            state->rcv_wnd_scale++;
-        }
+    if (state->ws_enabled) {
+        // RFC 1323, page 11: "the shift count must be limited to 14"
+        ASSERT(state->rcv_wnd_scale <= 14); // check the maximum window size
+        if (state->rcv_wnd_scale)
+            scaled_rcv_wnd = scaled_rcv_wnd >> state->rcv_wnd_scale;
     }
 
     ASSERT(scaled_rcv_wnd == (unsigned short)scaled_rcv_wnd);

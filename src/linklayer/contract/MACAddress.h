@@ -32,6 +32,7 @@
 
 
 
+class IPv4Address;
 class InterfaceToken;
 
 /**
@@ -42,19 +43,37 @@ class INET_API MACAddress
   private:
     uint64 address;   // 6*8=48 bit address, lowest 6 bytes are used, highest 2 bytes are always zero
     static unsigned int autoAddressCtr; // global counter for generateAutoAddress()
+    static bool simulationLifetimeListenerAdded;
     bool macAddress64;
 
   public:
+#if OMNETPP_VERSION >= 0x500
+    class SimulationLifetimeListener : public cISimulationLifetimeListener
+    {
+        virtual void lifetimeEvent(SimulationLifetimeEventType eventType, cObject *details) {
+            if (eventType == LF_PRE_NETWORK_INITIALIZE)
+                autoAddressCtr = 0;
+        }
+
+        virtual void listenerRemoved() {
+            delete this;
+        }
+    };
+#endif
+
     /** The unspecified MAC address, 00:00:00:00:00:00 */
     static const MACAddress UNSPECIFIED_ADDRESS;
 
     /** The broadcast MAC address, ff:ff:ff:ff:ff:ff */
     static const MACAddress BROADCAST_ADDRESS;
 
+    static const MACAddress BROADCAST_ADDRESS64;
+
     /** The special multicast PAUSE MAC address, 01:80:C2:00:00:01 */
     static const MACAddress MULTICAST_PAUSE_ADDRESS;
 
-  static const MACAddress BROADCAST_ADDRESS64;
+    /** The spanning tree protocol bridge's multicast address, 01:80:C2:00:00:00 */
+    static const MACAddress STP_MULTICAST_ADDRESS;
 
     /**
      * Default constructor initializes address bytes to zero.
@@ -194,6 +213,11 @@ class INET_API MACAddress
      * suffix.
      */
     static MACAddress generateAutoAddress();
+
+    /**
+     * Form a MAC address for a multicast IPv4 address, see  RFC 1112, section 6.4
+     */
+    static MACAddress makeMulticastAddress(IPv4Address addr);
 
     bool operator<(const MACAddress& other) const { return address < other.address; }
 

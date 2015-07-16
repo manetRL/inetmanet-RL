@@ -26,7 +26,7 @@
 
 #include <vector>
 #include <deque>
-#include "AppBase.h"
+#include "ApplicationBase.h"
 #include "UDPSocket.h"
 
 /**
@@ -36,7 +36,7 @@
  * and UDPVideoStreamSvr starts streaming to them. Capable of handling
  * streaming to multiple clients.
  */
-class INET_API UDPVideoStreamSvr2 : public AppBase
+class INET_API UDPVideoStreamSvr2 : public ApplicationBase
 {
   public:
     /**
@@ -114,16 +114,17 @@ class INET_API UDPVideoStreamSvr2 : public AppBase
   protected:
     ///@name Overridden cSimpleModule functions
     //@{
+    virtual int numInitStages() const { return 4; }
     virtual void initialize(int stage);
     virtual void finish();
     virtual void handleMessageWhenUp(cMessage* msg);
     void clearStreams();
     //@}
 
-    //AppBase:
-    virtual bool startApp(IDoneCallback *doneCallback);
-    virtual bool stopApp(IDoneCallback *doneCallback);
-    virtual bool crashApp(IDoneCallback *doneCallback);
+    //ApplicationBase:
+    virtual bool handleNodeStart(IDoneCallback *doneCallback);
+    virtual bool handleNodeShutdown(IDoneCallback *doneCallback);
+    virtual void handleNodeCrash();
 };
 
 #endif

@@ -22,7 +22,7 @@ import inet.applications.IPingApp;
 import inet.applications.ITCPApp;
 import inet.applications.IUDPApp;
 import inet.base.NotificationBoard;
-import inet.mobility.models.StationaryMobility;
+import inet.mobility.static.StationaryMobility;
 import inet.wpan.linklayer.ieee802154.Ieee802154csmaNic;
 import inet.networklayer.common.InterfaceTable;
 import inet.networklayer.ipv4.RoutingTable;
@@ -32,7 +32,7 @@ import inet.transport.udp.UDP;
 import inet.networklayer.IManetRouting;
 import inet.battery.IBattery;
 import inet.wpan.Isabel.Base.Display;
-
+import inet.linklayer.loopback.LoopbackInterface;
 
 //
 // Models a mobile host with a wireless (802.11b) card. This module is
@@ -108,10 +108,15 @@ module nodecsma802154
         manetrouting: <routingProtocol> like IManetRouting if routingProtocol != "" {
             @display("p=159,287");
         }
+
+        lo0: LoopbackInterface {
+            @display("p=209,368");
+        }
+
         // the name of radio interface must have "wlan", valid examples wlan, wlan802, localwlan ....
         wlan: Ieee802154csmaNic {
             parameters:
-                @display("p=248,349;q=queue");
+                @display("p=287,357;q=queue");
         }
         //        wlan: Nic80211;
         //            display: "p=248,349;q=queue;i=block/ifcard";
@@ -119,7 +124,7 @@ module nodecsma802154
             parameters:
                 initialX = x;
                 initialY = y;
-                initFromDisplayString=false;
+                initFromDisplayString = false;
                 @display("p=152,368;i=block/cogwheel");
         }
         disp: Display {
@@ -134,31 +139,35 @@ module nodecsma802154
 
         }
     connections allowunconnected:
+
+        networkLayer.ifOut++ --> lo0.upperLayerIn;
+        lo0.upperLayerOut --> networkLayer.ifIn++;
+
         for i=0..numTcpApps-1 {
             tcpApp[i].tcpOut --> tcp.appIn++;
             tcpApp[i].tcpIn <-- tcp.appOut++;
         }
 
-        tcp.ipOut --> networkLayer.tcpIn;
-        tcp.ipIn <-- networkLayer.tcpOut;
+        tcp.ipOut --> networkLayer.transportIn++;
+        tcp.ipIn <-- networkLayer.transportOut++;
 
         for i=0..numUdpApps-1 {
             udpApp[i].udpOut --> udp.appIn++;
             udpApp[i].udpIn <-- udp.appOut++;
         }
 
-        udp.ipOut --> networkLayer.udpIn;
-        udp.ipIn <-- networkLayer.udpOut;
+        udp.ipOut --> networkLayer.transportIn++;
+        udp.ipIn <-- networkLayer.transportOut++;
 
         for i=0..numPingApps-1 {
             networkLayer.pingOut++ --> pingApp[i].pingIn;
             networkLayer.pingIn++ <-- pingApp[i].pingOut;
         }
-        networkLayer.manetOut --> manetrouting.from_ip if routingProtocol != "";
-        networkLayer.manetIn <-- manetrouting.to_ip if routingProtocol != "";
+        networkLayer.transportOut++ --> manetrouting.from_ip if routingProtocol != "";
+        networkLayer.transportIn++ <-- manetrouting.to_ip if routingProtocol != "";
         // connections to network outside
         radioIn --> wlan.radioIn;
-        wlan.upperLayerOut --> networkLayer.ifIn[0];
-        wlan.upperLayerIn <-- networkLayer.ifOut[0];
+        wlan.upperLayerOut --> networkLayer.ifIn++;
+        wlan.upperLayerIn <-- networkLayer.ifOut++;
 }
 

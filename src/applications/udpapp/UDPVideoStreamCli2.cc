@@ -29,13 +29,13 @@
 
 Define_Module(UDPVideoStreamCli2);
 
-simsignal_t UDPVideoStreamCli2::rcvdPkSignal = SIMSIGNAL_NULL;
+simsignal_t UDPVideoStreamCli2::rcvdPkSignal = registerSignal("rcvdPk");
 
 UDPVideoStreamCli2::UDPVideoStreamCli2()
 {
-    reintentTimer = NULL;
-    timeOutMsg = NULL;
-    selfMsg = NULL;
+    reintentTimer = new cMessage();
+    timeOutMsg =  new cMessage();
+    selfMsg = new cMessage("UDPVideoStreamStart");
     socketOpened = false;
     numPframes = 0;
     numIframes = 0;
@@ -55,17 +55,13 @@ UDPVideoStreamCli2::~UDPVideoStreamCli2()
 
 void UDPVideoStreamCli2::initialize(int stage)
 {
-    AppBase::initialize(stage);
+    ApplicationBase::initialize(stage);
 
     if (stage == 0)
     {
         // statistics
-        rcvdPkSignal = registerSignal("rcvdPk");
-        reintentTimer = new cMessage();
-        timeOutMsg = new cMessage();
         timeOut  = par("timeOut");
         limitDelay = par("limitDelay");
-        selfMsg = new cMessage("UDPVideoStreamStart");
     }
 }
 
@@ -90,14 +86,9 @@ void UDPVideoStreamCli2::handleMessageWhenUp(cMessage* msg)
         if (reintentTimer == msg)
             requestStream();
         else if (timeOutMsg == msg)
-        {
             timeOutData();
-        }
         else
-        {
-            delete msg;
             requestStream();
-        }
     }
     else if (msg->getKind() == UDP_I_DATA)
     {
@@ -212,7 +203,7 @@ void UDPVideoStreamCli2::timeOutData()
         scheduleAt(simTime()+par("reintent").longValue(),reintentTimer);
 }
 
-bool UDPVideoStreamCli2::startApp(IDoneCallback *doneCallback)
+bool UDPVideoStreamCli2::handleNodeStart(IDoneCallback *doneCallback)
 {
     simtime_t startTimePar = par("startTime");
     simtime_t startTime = std::max(startTimePar, simTime());
@@ -220,7 +211,7 @@ bool UDPVideoStreamCli2::startApp(IDoneCallback *doneCallback)
     return true;
 }
 
-bool UDPVideoStreamCli2::stopApp(IDoneCallback *doneCallback)
+bool UDPVideoStreamCli2::handleNodeShutdown(IDoneCallback *doneCallback)
 {
     cancelEvent(selfMsg);
     cancelEvent(reintentTimer);
@@ -229,12 +220,11 @@ bool UDPVideoStreamCli2::stopApp(IDoneCallback *doneCallback)
     return true;
 }
 
-bool UDPVideoStreamCli2::crashApp(IDoneCallback *doneCallback)
+void UDPVideoStreamCli2::handleNodeCrash()
 {
     cancelEvent(selfMsg);
     cancelEvent(reintentTimer);
     cancelEvent(timeOutMsg);
-    return true;
 }
 
 

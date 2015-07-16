@@ -20,19 +20,23 @@
 #include "Ieee80211Primitives_m.h"
 #include "NotifierConsts.h"
 #include "InterfaceTableAccess.h"
-
+#include "NodeOperations.h"
+#include "opp_utils.h"
 
 Define_Module(Ieee80211AgentSTA);
 
 #define MK_STARTUP  1
 
-simsignal_t Ieee80211AgentSTA::sentRequestSignal = SIMSIGNAL_NULL;
-simsignal_t Ieee80211AgentSTA::acceptConfirmSignal = SIMSIGNAL_NULL;
-simsignal_t Ieee80211AgentSTA::dropConfirmSignal = SIMSIGNAL_NULL;
+simsignal_t Ieee80211AgentSTA::sentRequestSignal = registerSignal("sentRequest");
+simsignal_t Ieee80211AgentSTA::acceptConfirmSignal = registerSignal("acceptConfirm");
+simsignal_t Ieee80211AgentSTA::dropConfirmSignal = registerSignal("dropConfirm");
+
 
 void Ieee80211AgentSTA::initialize(int stage)
 {
-    if (stage==0)
+    cSimpleModule::initialize(stage);
+
+    if (stage == 0)
     {
         // read parameters
         activeScan = par("activeScan");
@@ -49,31 +53,33 @@ void Ieee80211AgentSTA::initialize(int stage)
         nb = NotificationBoardAccess().get();
         nb->subscribe(this, NF_L2_BEACON_LOST);
 
-        InterfaceTable *ift = (InterfaceTable*)InterfaceTableAccess().getIfExists();
-        myIface = NULL;
-        if (ift)
-        {
-            myIface = ift->getInterfaceByName(getParentModule()->getFullName());
-        }
-
         // JcM add: get the default ssid, if there is one.
         default_ssid = par("default_ssid").stringValue();
 
-        //Statistics:
-        sentRequestSignal = registerSignal("sentRequest");
-        acceptConfirmSignal = registerSignal("acceptConfirm");
-        dropConfirmSignal = registerSignal("dropConfirm");
-
         // start up: send scan request
         simtime_t startingTime = par("startingTime").doubleValue();
-        if (startingTime < SIMTIME_ZERO)
+        if (startingTime <= SIMTIME_ZERO)
             startingTime = uniform(SIMTIME_ZERO, maxChannelTime);
         scheduleAt(simTime()+startingTime, new cMessage("startUp", MK_STARTUP));
+
+        myIface = NULL;
+        isOperational = true;
+    }
+    else if (stage == 1)
+    {
+        IInterfaceTable *ift = InterfaceTableAccess().getIfExists();
+        if (ift)
+        {
+            myIface = ift->getInterfaceByName(OPP_Global::stripnonalnum(findModuleUnderContainingNode(this)->getFullName()).c_str());
+        }
     }
 }
 
 void Ieee80211AgentSTA::handleMessage(cMessage *msg)
 {
+    if (!isOperational)
+        delete msg;
+
     if (msg->isSelfMessage())
         handleTimer(msg);
     else
@@ -120,6 +126,9 @@ void Ieee80211AgentSTA::receiveChangeNotification(int category, const cObject *d
 {
     Enter_Method_Silent();
     printNotificationBanner(category, details);
+
+    if (!isOperational)
+        return;
 
     if (category == NF_L2_BEACON_LOST)
     {
@@ -222,6 +231,7 @@ void Ieee80211AgentSTA::processScanConfirm(Ieee80211Prim_ScanConfirm *resp)
     {
         // search if the default_ssid is in the list, otherwise
         // keep searching.
+        bssIndex = -1;
         for (int i=0; i<(int)resp->getBssListArraySize(); i++)
         {
             std::string resp_ssid = resp->getBssList(i).getSSID();
@@ -319,7 +329,7 @@ void Ieee80211AgentSTA::processAssociateConfirm(Ieee80211Prim_AssociateConfirm *
         getParentModule()->getParentModule()->bubble("Associated with AP");
         if(prevAP.isUnspecified() || prevAP != resp->getAddress())
         {
-            nb->fireChangeNotification(NF_L2_ASSOCIATED_NEWAP, myIface); //XXX detail: InterfaceEntry?
+            nb->fireChangeNotification(NF_L2_ASSOCIATED_NEWAP, myIface);
             prevAP = resp->getAddress();
         }
         else
@@ -340,9 +350,40 @@ void Ieee80211AgentSTA::processReassociateConfirm(Ieee80211Prim_ReassociateConfi
     else
     {
         EV << "Reassociation successful\n";
-        nb->fireChangeNotification(NF_L2_ASSOCIATED_OLDAP, myIface); //XXX detail: InterfaceEntry?
+        nb->fireChangeNotification(NF_L2_ASSOCIATED_OLDAP, myIface);
         emit(acceptConfirmSignal, PR_REASSOCIATE_CONFIRM);
         // we are happy!
     }
 }
 
+bool Ieee80211AgentSTA::handleOperationStage(LifecycleOperation *operation, int stage, IDoneCallback *doneCallback)
+{
+    Enter_Method_Silent();
+    if (dynamic_cast<NodeStartOperation *>(operation)) {
+        if (stage == NodeStartOperation::STAGE_PHYSICAL_LAYER)
+            start();
+    }
+    else if (dynamic_cast<NodeShutdownOperation *>(operation)) {
+        if (stage == NodeStartOperation::STAGE_PHYSICAL_LAYER)
+            stop();
+    }
+    else if (dynamic_cast<NodeCrashOperation *>(operation)) {
+        if (stage == NodeStartOperation::STAGE_LOCAL)  // crash is immediate
+            stop();
+    }
+    else
+        throw cRuntimeError("Unsupported operation '%s'", operation->getClassName());
+    return true;
+}
+
+void Ieee80211AgentSTA::start()
+{
+    isOperational = true;
+    simtime_t startingTime = uniform(SIMTIME_ZERO, maxChannelTime);
+    scheduleAt(simTime()+startingTime, new cMessage("startUp", MK_STARTUP));
+}
+
+void Ieee80211AgentSTA::stop()
+{
+    isOperational = false;
+}

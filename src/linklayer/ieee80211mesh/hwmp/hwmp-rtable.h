@@ -80,6 +80,13 @@ class HwmpRtable : public cObject
         /// Path precursor = {MAC, interface ID}
         typedef std::vector<std::pair<uint32_t, MACAddress> > PrecursorList;
 
+        void clearTable()
+        {
+            EV << "clearTable() " << endl;
+            DeleteProactivePath();
+            m_routes.clear();
+        }
+
     public:
         struct Precursor
         {

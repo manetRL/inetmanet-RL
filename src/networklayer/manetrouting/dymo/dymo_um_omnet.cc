@@ -71,7 +71,9 @@ std::map<ManetAddress,u_int32_t *> DYMOUM::mapSeqNum;
 
 void DYMOUM::initialize(int stage)
 {
-    if (stage==4)
+    ManetRoutingBase::initialize(stage);
+
+    if (stage == 4)
     {
 
 #ifndef DYMO_UM_GLOBAL_STATISTISTIC
@@ -98,8 +100,6 @@ void DYMOUM::initialize(int stage)
 
         /* From debug.c */
         /* Note: log_nmsgs was never used anywhere */
-
-        debug = 0;
 
         gateWayAddress = new IPv4Address("0.0.0.0");
         /* Set host parameters */
@@ -350,6 +350,12 @@ void DYMOUM::handleMessage(cMessage *msg)
     cMessage *msg_aux;
     struct in_addr src_addr;
     struct in_addr dest_addr;
+
+    if (!isNodeOperational())
+    {
+        delete msg;
+        return;
+    }
 
     if (is_init==false)
         opp_error("Dymo-UM has not been initialized ");
@@ -1326,7 +1332,7 @@ void DYMOUM::packetFailed(IPv4Datagram *dgram)
     {
         struct in_addr nm;
         nm.s_addr = ManetAddress(IPv4Address::ALLONES_ADDRESS);
-        omnet_chg_rte(dest_addr,dest_addr, nm,0,true, IPv4Route::dDYMO);
+        omnet_chg_rte(dest_addr,dest_addr, nm,0,true);
     }
     scheduleNextEvent();
 }
@@ -1838,5 +1844,80 @@ void DYMOUM::processLocatorDisAssoc(const cObject *details)
         return;
     }
 #endif
+}
+
+
+bool DYMOUM::handleNodeStart(IDoneCallback *doneCallback)
+{
+    if (isRoot)
+    {
+        timer_init(&proactive_rreq_timer,&NS_CLASS rreq_proactive, NULL);
+        timer_set_timeout(&proactive_rreq_timer, par("startRreqProactive").longValue());
+    }
+    startDYMOUMAgent();
+    scheduleNextEvent();
+    return true;
+}
+
+bool DYMOUM::handleNodeShutdown(IDoneCallback *doneCallback)
+{
+
+    // Clean all internal tables
+        packet_queue_destroy();
+        if (macToIpAdress)
+            delete macToIpAdress;
+    // Routing table
+        rtable_destroy();
+        while (!dymoPendingRreq->empty())
+        {
+            timer_remove(&dymoPendingRreq->begin()->second->timer);
+            delete dymoPendingRreq->begin()->second;
+            dymoPendingRreq->erase(dymoPendingRreq->begin());
+        }
+        while (!dymoBlackList->empty())
+        {
+            timer_remove(&dymoBlackList->begin()->second->timer);
+            delete dymoBlackList->begin()->second;
+            dymoBlackList->erase(dymoBlackList->begin());
+        }
+        while (!dymoNbList->empty())
+        {
+            timer_remove(&dymoNbList->back()->timer);
+            delete dymoNbList->back();
+            dymoNbList->pop_back();
+        }
+        cancelEvent(sendMessageEvent);
+        dymoTimerList->clear();
+        return true;
+}
+
+void DYMOUM::handleNodeCrash()
+{
+    // Clean all internal tables
+        packet_queue_destroy();
+        if (macToIpAdress)
+            delete macToIpAdress;
+    // Routing table
+        rtable_destroy();
+        while (!dymoPendingRreq->empty())
+        {
+            timer_remove(&dymoPendingRreq->begin()->second->timer);
+            delete dymoPendingRreq->begin()->second;
+            dymoPendingRreq->erase(dymoPendingRreq->begin());
+        }
+        while (!dymoBlackList->empty())
+        {
+            timer_remove(&dymoBlackList->begin()->second->timer);
+            delete dymoBlackList->begin()->second;
+            dymoBlackList->erase(dymoBlackList->begin());
+        }
+        while (!dymoNbList->empty())
+        {
+            timer_remove(&dymoNbList->back()->timer);
+            delete dymoNbList->back();
+            dymoNbList->pop_back();
+        }
+        cancelEvent(sendMessageEvent);
+        dymoTimerList->clear();
 }
 

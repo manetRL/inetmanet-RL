@@ -47,6 +47,7 @@ void Ieee80211Etx::initialize(int stage)
         powerWindow = par("powerWindow");
         powerWindowTime = par("powerWindowTime");
         hysteresis = par("ETXHysteresis");
+        pasiveMeasure = par("pasiveMeasure");
         NotificationBoard *nb = NotificationBoardAccess().get();
         nb->subscribe(this, NF_LINK_BREAK);
         nb->subscribe(this, NF_LINK_FULL_PROMISCUOUS);
@@ -57,9 +58,9 @@ void Ieee80211Etx::initialize(int stage)
             if (ie->getMacAddress()==myAddress)
                 ie->setEstimateCostProcess(par("Index").longValue(), this);
         }
-        if (etxSize>0 && etxInterval>0)
+        if (etxSize>0 && etxInterval>0 && !pasiveMeasure)
             scheduleAt(simTime()+par("startEtx"), etxTimer);
-        if (ettInterval>0 && ettSize1>0 && ettSize2>0)
+        if (ettInterval>0 && ettSize1>0 && ettSize2>0 && !pasiveMeasure)
         {
             // integrity check
             if (etxSize <0  || etxInterval < 0)
@@ -137,7 +138,8 @@ void Ieee80211Etx::handleTimer(cMessage *msg)
             pkt->setKind(i);
             send(pkt, "toMac");
         }
-        scheduleAt(simTime()+par("ETXjitter")+etxInterval, etxTimer);
+        if (!pasiveMeasure)
+            scheduleAt(simTime()+par("ETXjitter")+etxInterval, etxTimer);
     }
     else if (msg == ettTimer)
     {
@@ -173,7 +175,8 @@ void Ieee80211Etx::handleTimer(cMessage *msg)
                 it++;
             }
         }
-        scheduleAt(simTime() + par("ETXjitter") + ettInterval, ettTimer);
+        if (!pasiveMeasure)
+            scheduleAt(simTime() + par("ETXjitter") + ettInterval, ettTimer);
     }
 }
 
@@ -672,19 +675,27 @@ void Ieee80211Etx::handleEtxMessage(MACETXPacket *msg)
 
         double etx;
         double ett;
+        double snr;
         getEtxEtt(msg->getSource(),etx,ett);
-
+        int iface = getSignalToNoise(msg->getSource(), snr);
         if (GlobalWirelessLinkInspector::getLinkCost(org,dest,link))
         {
             link.costEtx = etx;
             link.costEtt = ett;
+            if (iface >= 0)
+                link.snr = snr;
+            else
+                link.snr = 0;
             GlobalWirelessLinkInspector::setLinkCost(org,dest,link);
         }
         else
         {
             link.costEtt = ett;
             link.costEtx = etx;
-            link.snr = 0;
+            if (iface >= 0)
+                link.snr = snr;
+            else
+                link.snr = 0;
             GlobalWirelessLinkInspector::setLinkCost(org,dest,link);
         }
     }

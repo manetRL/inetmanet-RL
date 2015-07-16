@@ -27,6 +27,9 @@
 #include "Ieee80211eClassifier.h"
 #include "Ieee80211DataRate.h"
 #include "opp_utils.h"
+#ifdef  USEMULTIQUEUE
+#include "FrameBlock.h"
+#endif
 
 // #define DISABLEERRORACK
 
@@ -59,16 +62,20 @@ Register_Enum(RadioState,
  * Construction functions.
  */
 
+simsignal_t Ieee80211Mac::endTransmissionSignal = registerSignal("endTransmission");
+
 Ieee80211Mac::Ieee80211Mac()
 {
     endSIFS = NULL;
     endDIFS = NULL;
     endTimeout = NULL;
     endReserve = NULL;
+    endTXOP = NULL;
     mediumStateChange = NULL;
     pendingRadioConfigMsg = NULL;
     classifier = NULL;
     queueMode = false;
+    registerErrors = false;
 }
 
 Ieee80211Mac::~Ieee80211Mac()
@@ -214,6 +221,7 @@ void Ieee80211Mac::initialize(int stage)
             os<< i;
             std::string strAifs = "AIFSN"+os.str();
             std::string strTxop = "TXOP"+os.str();
+            std::string strSaveSize = "saveSize"+os.str();
             if (hasPar(strAifs.c_str()) && hasPar(strTxop.c_str()))
             {
                 AIFSN(i) = par(strAifs.c_str());
@@ -221,9 +229,15 @@ void Ieee80211Mac::initialize(int stage)
             }
             else
                 opp_error("parameters %s , %s don't exist", strAifs.c_str(), strTxop.c_str());
+
+            edcCAF[i].saveSize = par(strSaveSize.c_str());
         }
+
+
         if (numCategories()==1)
             AIFSN(0) = par("AIFSN");
+
+        difsSlot = par("AIFSN");
 
         for (int i = 0; i < numCategories(); i++)
         {
@@ -245,10 +259,21 @@ void Ieee80211Mac::initialize(int stage)
             }
         }
 
+        initialBackoffExponent = 0;
+        if (classifier == NULL)
+        {
+            int val = 1;
+            while (val < cwMinData)
+            {
+                initialBackoffExponent++;
+                val = (1 << initialBackoffExponent);
+            }
+        }
+
+
         ST = par("slotTime"); //added by sorin
         if (ST==-1)
             ST = 20e-6; //20us
-        EV<<" slotTime="<<ST*1e6<<"us DIFS="<< getDIFS()*1e6<<"us";
 
         basicBitrate = par("basicBitrate");
         bitrate = par("bitrate");
@@ -273,22 +298,40 @@ void Ieee80211Mac::initialize(int stage)
         else
             Ieee80211Descriptor::getIdx(opMode, basicBitrate);
 
+        basicTransmisionMode = WifiModulationType::getModulationType(opMode, basicBitrate);
+        if (opMode == 'n' && carrierFrequency == 5e6)
+            WifiModulationType::setHTFrequency11n5Gh(basicTransmisionMode);
+
         controlBitRate = par("controlBitrate").doubleValue();
+
+        radioModule = gate("lowerLayerOut")->getNextGate()->getOwnerModule()->getId();
+        carrierFrequency = gate("lowerLayerOut")->getNextGate()->getOwnerModule()->par("carrierFrequency");
 
         if (controlBitRate == -1)
         {
             int basicBitrateIdx = Ieee80211Descriptor::getMaxIdx(opMode);
             controlBitRate = Ieee80211Descriptor::getDescriptor(basicBitrateIdx).bitrate;
             controlFrameModulationType = Ieee80211Descriptor::getDescriptor(basicBitrateIdx).modulationType;
+            if (opMode == 'n' && carrierFrequency == 5e6)
+                WifiModulationType::setHTFrequency11n5Gh(controlFrameModulationType);
         }
         else
         {
             int basicBitrateIdx = Ieee80211Descriptor::getIdx(opMode, controlBitRate);
             controlFrameModulationType = Ieee80211Descriptor::getDescriptor(basicBitrateIdx).modulationType;
+            if (opMode == 'n' && carrierFrequency == 5e6)
+                WifiModulationType::setHTFrequency11n5Gh(controlFrameModulationType);
         }
 
-        EV<<" basicBitrate="<<basicBitrate/1e6<<"M";
-        EV<<" bitrate="<<bitrate/1e6<<"M IDLE="<<IDLE<<" RECEIVE="<<RECEIVE<<endl;
+        // init transmission mode
+        transmisionMode = WifiModulationType::getModulationType(opMode, bitrate);
+        if (opMode == 'n' && carrierFrequency == 5e6)
+            WifiModulationType::setHTFrequency11n5Gh(transmisionMode);
+
+        EV<<" slotTime = "<<getSlotTime()*1e6<<"us DIFS = "<< getDIFS()*1e6<<"us";
+
+        EV<<" basicBitrate="<<basicBitrate/1e6<<"Mb ";
+        EV<<" bitrate="<<bitrate/1e6<<"Mb IDLE="<<IDLE<<" RECEIVE="<<RECEIVE<<endl;
 
         // configure AutoBit Rate
         configureAutoBitRate();
@@ -412,7 +455,11 @@ void Ieee80211Mac::initialize(int stage)
         // initialize watches
         validRecMode = false;
         initWatches();
-        radioModule = gate("lowerLayerOut")->getNextGate()->getOwnerModule()->getId();
+
+        // used to support block ACK
+        radioModulePtr = dynamic_cast<cSimpleModule*>(gate("lowerLayerOut")->getPathEndGate()->getOwnerModule());
+        if (radioModulePtr)
+            radioModulePtr->subscribe(endTransmissionSignal, this);
     }
 }
 
@@ -676,8 +723,9 @@ int Ieee80211Mac::mappingAccessCategory(Ieee80211DataOrMgmtFrame *frame)
 {
     bool isDataFrame = (dynamic_cast<Ieee80211DataFrame *>(frame) != NULL);
 
-    currentAC = classifier ? classifier->classifyPacket(frame) : 0;
-        // check for queue overflow
+    int tempAC = classifier ? classifier->classifyPacket(frame) : 0;
+
+    // check for queue overflow
     if (isDataFrame && maxCategorieQueueSize && (int)transmissionQueue()->size() >= maxCategorieQueueSize)
     {
         EV << "message " << frame << " received from higher layer but AC queue is full, dropping message\n";
@@ -686,14 +734,14 @@ int Ieee80211Mac::mappingAccessCategory(Ieee80211DataOrMgmtFrame *frame)
         return 200;
     }
 
-    if (isDataFrame && maxQueueSize && (int)transmissionQueueSize() >= maxQueueSize)
+    if (isDataFrame && maxQueueSize && transmissionQueueWithReserveFull(tempAC))
     {
         EV << "message " << frame << " received from higher layer but AC queue is full, dropping message\n";
         numDropped()++;
         delete frame;
         return 200;
     }
-    transmissionQueue()->push_back(frame);
+    transmissionQueue()->push_back(frame, tempAC);
     EV << "frame classified as access category "<< currentAC <<" (0 background, 1 best effort, 2 video, 3 voice)\n";
     return true;
 }
@@ -714,13 +762,15 @@ int Ieee80211Mac::mappingAccessCategory(Ieee80211DataOrMgmtFrame *frame)
         return 200;
     }
 
-    if (isDataFrame && maxQueueSize && (int)transmissionQueueSize() >= maxQueueSize)
+    if (isDataFrame && maxQueueSize && transmissionQueueWithReserveFull(tempAC))
     {
         EV << "message " << frame << " received from higher layer but AC queue is full, dropping message\n";
         numDropped()++;
         delete frame;
         return 200;
     }
+
+
     // if the frame is not discarded actualize currectAC
     currentAC = tempAC;
     if (isDataFrame)
@@ -835,13 +885,10 @@ void Ieee80211Mac::handleLowerMsg(cPacket *msg)
             validRecMode = true;
     }
 
-    if (rateControlMode == RATE_CR)
-    {
-        if (msg->getControlInfo())
-            delete msg->removeControlInfo();
-    }
-
     Ieee80211Frame *frame = dynamic_cast<Ieee80211Frame *>(msg);
+
+    if (msg->getKind() != COLLISION && msg->getKind() != BITERROR)
+        sendNotification(NF_LINK_FULL_PROMISCUOUS, msg);
 
     if (msg->getControlInfo() && dynamic_cast<Radio80211aControlInfo *>(msg->getControlInfo()))
     {
@@ -857,6 +904,13 @@ void Ieee80211Mac::handleLowerMsg(cPacket *msg)
         lossRate = cinfo->getLossRate();
         delete cinfo;
     }
+
+    if (rateControlMode == RATE_CR)
+    {
+        if (msg->getControlInfo())
+            delete msg->removeControlInfo();
+    }
+
 
     if (contI%samplingCoeff==0)
     {
@@ -901,9 +955,34 @@ void Ieee80211Mac::handleLowerMsg(cPacket *msg)
 #endif
 
 
-    if (msg->getKind() != COLLISION && msg->getKind() != BITERROR)
-        sendNotification(NF_LINK_FULL_PROMISCUOUS, msg);
+    if (registerErrors && twoAddressFrame)
+    {
+        bool error = false;
+        if (msg->getKind() != COLLISION && msg->getKind() != BITERROR)
+            error = true;
+        Ieee80211ErrorInfo::iterator it = errorInfo.find(frame->getReceiverAddress());
+        if (it == errorInfo.end())
+        {
+            Ieee80211PacketErrorInfo info;
+            std::vector<Ieee80211PacketErrorInfo> infoVector;
+            info.Size = frame->getByteLength();
+            info.timeRec = simTime();
+            info.hasErrors = error;
+            infoVector.push_back(info);
+            errorInfo.insert(std::pair<MACAddress, std::vector<Ieee80211PacketErrorInfo> >(frame->getReceiverAddress(),infoVector));
+        }
+        else
+        {
 
+            while (simTime() - it->second.front().timeRec > 10)
+                it->second.erase(it->second.begin());
+            Ieee80211PacketErrorInfo info;
+            info.Size = frame->getByteLength();
+            info.timeRec = simTime();
+            info.hasErrors = error;
+            it->second.push_back(info);
+       }
+    }
 
     handleWithFSM(msg);
 
@@ -971,6 +1050,14 @@ void Ieee80211Mac::handleWithFSM(cMessage *msg)
         return;
     }
 
+// Special case, is  endTimeout ACK and the radio state  is RECV, the system must wait until end reception (9.3.2.8 ACK procedure)
+    if (msg == endTimeout && radioState == RadioState::RECV && useModulationParameters && fsm.getState() == WAITACK)
+    {
+        EV << "Re-schedule WAITACK timeout \n";
+        scheduleAt(simTime() + controlFrameTxTime(LENGTH_ACK), endTimeout);
+        return;
+    }
+
     Ieee80211Frame *frame = dynamic_cast<Ieee80211Frame*>(msg);
     int frameType = frame ? frame->getType() : -1;
     int msgKind = msg->getKind();
@@ -1016,7 +1103,8 @@ void Ieee80211Mac::handleWithFSM(cMessage *msg)
             FSMA_Event_Transition(Data-Ready,
                                   isUpperMsg(msg),
                                   DEFER,
-                                  ASSERT(isInvalidBackoffPeriod() || backoffPeriod() == SIMTIME_ZERO);
+                                  if (isInvalidBackoffPeriod() || backoffPeriod() == SIMTIME_ZERO)
+                                      ASSERT(isInvalidBackoffPeriod() || backoffPeriod() == SIMTIME_ZERO);
                                   invalidateBackoffPeriod();
                                  );
             FSMA_No_Event_Transition(Immediate-Data-Ready,
@@ -1246,6 +1334,7 @@ void Ieee80211Mac::handleWithFSM(cMessage *msg)
             FSMA_Event_Transition(Receive-ACK-TXOP-Empty,
                                   isLowerMsg(msg) && isForUs(frame) && frameType == ST_ACK && txop && transmissionQueue(oldcurrentAC)->size() == 1,
                                   DEFER,
+                                  nb->fireChangeNotification(NF_TX_ACKED,0);// added by aaq
                                   currentAC = oldcurrentAC;
                                   if (retryCounter() == 0) numSentWithoutRetry()++;
                                   numSent()++;
@@ -1268,6 +1357,7 @@ void Ieee80211Mac::handleWithFSM(cMessage *msg)
             FSMA_Event_Transition(Receive-ACK-TXOP,
                                   isLowerMsg(msg) && isForUs(frame) && frameType == ST_ACK && txop,
                                   WAITSIFS,
+                                  nb->fireChangeNotification(NF_TX_ACKED,0);// added by aaq
                                   currentAC = oldcurrentAC;
                                   if (retryCounter() == 0) numSentWithoutRetry()++;
                                   numSent()++;
@@ -1311,6 +1401,7 @@ void Ieee80211Mac::handleWithFSM(cMessage *msg)
              FSMA_Event_Transition(Receive-ACK,
                                   isLowerMsg(msg) && isForUs(frame) && frameType == ST_ACK,
                                   DEFER,
+                                  nb->fireChangeNotification(NF_TX_ACKED,0);// added by mhn **************************************
                                   currentAC = oldcurrentAC;
                                   if (retryCounter() == 0)
                                       numSentWithoutRetry()++;
@@ -1544,9 +1635,13 @@ simtime_t Ieee80211Mac::getSIFS()
 // TODO:   return aRxRFDelay() + aRxPLCPDelay() + aMACProcessingDelay() + aRxTxTurnaroundTime();
     if (useModulationParameters)
     {
-        ModulationType modType;
-        modType = WifiModulationType::getModulationType(opMode, bitrate);
-        return WifiModulationType::getSifsTime(modType,wifiPreambleType);
+        if (transmisionMode.getDataRate() != (uint32_t) bitrate)
+        {
+            transmisionMode = WifiModulationType::getModulationType(opMode, bitrate);
+            if (opMode == 'n' && carrierFrequency == 5e6)
+                WifiModulationType::setHTFrequency11n5Gh(transmisionMode);
+        }
+        return WifiModulationType::getSifsTime(transmisionMode,wifiPreambleType);
     }
 
     return SIFS;
@@ -1557,9 +1652,13 @@ simtime_t Ieee80211Mac::getSlotTime()
 // TODO:   return aCCATime() + aRxTxTurnaroundTime + aAirPropagationTime() + aMACProcessingDelay();
     if (useModulationParameters)
     {
-        ModulationType modType;
-        modType = WifiModulationType::getModulationType(opMode, bitrate);
-        return WifiModulationType::getSlotDuration(modType,wifiPreambleType);
+        if (transmisionMode.getDataRate() != (uint32_t) bitrate)
+        {
+            transmisionMode = WifiModulationType::getModulationType(opMode, bitrate);
+            if (opMode == 'n' && carrierFrequency == 5e6)
+                WifiModulationType::setHTFrequency11n5Gh(transmisionMode);
+        }
+        return WifiModulationType::getSlotDuration(transmisionMode,wifiPreambleType);
     }
     return ST;
 }
@@ -1569,27 +1668,9 @@ simtime_t Ieee80211Mac::getPIFS()
     return getSIFS() + getSlotTime();
 }
 
-simtime_t Ieee80211Mac::getDIFS(int category)
+simtime_t Ieee80211Mac::getDIFS()
 {
-    if (category<0 || category>(numCategories()-1))
-    {
-        int index = numCategories()-1;
-        if (index<0)
-            index = 0;
-        return getSIFS() + ((double)AIFSN(index) * getSlotTime());
-    }
-    else
-    {
-        return getSIFS() + ((double)AIFSN(category)) * getSlotTime();
-    }
-
-}
-
-simtime_t Ieee80211Mac::getHeaderTime(double bitrate)
-{
-    ModulationType modType;
-    modType = WifiModulationType::getModulationType(opMode, bitrate);
-    return WifiModulationType::getPreambleAndHeader(modType, wifiPreambleType);
+    return getSIFS() + (difsSlot * getSlotTime());
 }
 
 simtime_t Ieee80211Mac::getAIFS(int AccessCategory)
@@ -1614,10 +1695,23 @@ simtime_t Ieee80211Mac::computeBackoffPeriod(Ieee80211Frame *msg, int r)
     {
         ASSERT(0 <= r && r < transmissionLimit);
 
-        cw = (cwMin() + 1) * (1 << r) - 1;
+        if (classifier == NULL)
+        {
+            // Compute Backoff: 9.3.3 Random backoff time
+            if (r == 0)
+                cw = cwMin();
+            else
+                cw = (1 << (initialBackoffExponent  + r)) - 1;
+        }
+        else
+        {
+            // Compute Backoff:  9.19.2.5 EDCA backoff procedure
+            cw = (cwMin() + 1) * (1 << r) - 1;
+        }
 
         if (cw > cwMax())
             cw = cwMax();
+
     }
 
     int c = intrand(cw + 1);
@@ -1660,6 +1754,34 @@ void Ieee80211Mac::cancelDIFSPeriod()
 void Ieee80211Mac::scheduleAIFSPeriod()
 {
     bool schedule = false;
+    if (classifier == NULL) //DCF
+    {
+        currentAC = 0;
+        if (!transmissionQueue(0)->empty() && !endAIFS(0)->isScheduled())
+        {
+            if (!endDIFS->isScheduled())
+            {
+                if (lastReceiveFailed)
+                {
+                    EV << "reception of last frame failed, scheduling EIFS period \n";
+                    scheduleAt(simTime() + getEIFS(), endAIFS(0));
+                }
+                else
+                {
+                    EV << "scheduling DIFS period (frame pending)\n";
+                    scheduleAt(simTime() + getDIFS(), endAIFS(0));
+                }
+            }
+        }
+        if (!endAIFS(0)->isScheduled() && !endDIFS->isScheduled())
+        {
+            // schedule default DIFS
+            EV << "scheduling DIFS period (no frame pending)\n";
+            scheduleDIFSPeriod();
+        }
+        return;
+    }
+
     for (int i = 0; i<numCategories(); i++)
     {
         if (!endAIFS(i)->isScheduled() && !transmissionQueue(i)->empty())
@@ -1726,15 +1848,25 @@ void Ieee80211Mac::scheduleDataTimeoutPeriod(Ieee80211DataOrMgmtFrame *frameToSe
         if (useModulationParameters)
         {
             ModulationType modType;
-            modType = WifiModulationType::getModulationType(opMode, bitRate);
-            WifiModulationType::getSlotDuration(modType,wifiPreambleType);
-            tim = computeFrameDuration(frameToSend) +SIMTIME_DBL(
-                 WifiModulationType::getSlotDuration(modType,wifiPreambleType) +
-                 WifiModulationType::getSifsTime(modType,wifiPreambleType) +
-                 WifiModulationType::get_aPHY_RX_START_Delay (modType,wifiPreambleType));
+            if (basicTransmisionMode.getDataRate() == (uint32_t) bitRate)
+                modType = basicTransmisionMode;
+            else if (transmisionMode.getDataRate() != (uint32_t) bitRate)
+            {
+                transmisionMode = WifiModulationType::getModulationType(opMode, bitRate);
+                if (opMode == 'n' && carrierFrequency == 5e6)
+                    WifiModulationType::setHTFrequency11n5Gh(transmisionMode);
+                modType = transmisionMode;
+            }
+            else
+                modType = transmisionMode;
+            double duration = computeFrameDuration(frameToSend);
+            double slot = SIMTIME_DBL(WifiModulationType::getSlotDuration(modType,wifiPreambleType));
+            double sifs =  SIMTIME_DBL(WifiModulationType::getSifsTime(modType,wifiPreambleType));
+            double PHY_RX_START = SIMTIME_DBL(WifiModulationType::get_aPHY_RX_START_Delay (modType,wifiPreambleType));
+            tim = duration + slot + sifs + PHY_RX_START;
         }
         else
-            tim = computeFrameDuration(frameToSend) +SIMTIME_DBL( getSIFS()) + controlFrameTxTime(LENGTH_ACK) + MAX_PROPAGATION_DELAY * 2;
+            tim = computeFrameDuration(frameToSend) + SIMTIME_DBL( getSlotTime()) +SIMTIME_DBL( getSIFS()) + controlFrameTxTime(LENGTH_ACK) + MAX_PROPAGATION_DELAY * 2;
         EV<<" time out="<<tim*1e6<<"us"<<endl;
         scheduleAt(simTime() + tim, endTimeout);
     }
@@ -2011,9 +2143,15 @@ Ieee80211DataOrMgmtFrame *Ieee80211Mac::buildDataFrame(Ieee80211DataOrMgmtFrame 
             }
             int size = nextframeToSend->getBitLength();
 
-            nextframeToSend = dynamic_cast<Ieee80211DataOrMgmtFrame*> (transmissionQueue()->next());
-            frame->setDuration(3 * getSIFS() + 2 * controlFrameTxTime(LENGTH_ACK)
-                               + computeFrameDuration(size,bitRate));
+            if (dynamic_cast<FrameBlock*> (transmissionQueue()->next()))
+            {
+                // TODO :
+            }
+            else
+            {
+                nextframeToSend = dynamic_cast<Ieee80211DataOrMgmtFrame*> (transmissionQueue()->next());
+                frame->setDuration(3 * getSIFS() + 2 * controlFrameTxTime(LENGTH_ACK) + computeFrameDuration(size,bitRate));
+            }
 #else
             // ++ operation is safe because txop is true
             std::list<Ieee80211DataOrMgmtFrame*>::iterator nextframeToSend;
@@ -2309,7 +2447,18 @@ double Ieee80211Mac::computeFrameDuration(int bits, double bitrate)
 {
     double duration;
     ModulationType modType;
-    modType = WifiModulationType::getModulationType(opMode, bitrate);
+    if (basicTransmisionMode.getDataRate() == (uint32_t) bitrate)
+        modType = basicTransmisionMode;
+    else if (transmisionMode.getDataRate() != (uint32_t) bitrate)
+    {
+        transmisionMode = WifiModulationType::getModulationType(opMode, bitrate);
+        if (opMode == 'n' && carrierFrequency == 5e6)
+            WifiModulationType::setHTFrequency11n5Gh(transmisionMode);
+        modType = transmisionMode;
+    }
+    else
+        modType = transmisionMode;
+
     if (PHY_HEADER_LENGTH<0)
         duration = SIMTIME_DBL(WifiModulationType::calculateTxDuration(bits, modType, wifiPreambleType));
     else
@@ -2377,6 +2526,22 @@ unsigned int Ieee80211Mac::transmissionQueueSize()
         totalSize+=transmissionQueue(i)->size();
     return totalSize;
 }
+
+bool Ieee80211Mac::transmissionQueueWithReserveFull(int categorie)
+{
+    unsigned int totalSize = 0;
+    unsigned int residual = 0;
+    for (int i=0; i<numCategories(); i++)
+    {
+        totalSize+=transmissionQueue(i)->size();
+        if (transmissionQueue(i)->size() < edcCAF[i].saveSize && i != categorie)
+            residual += (edcCAF[i].saveSize - transmissionQueue(i)->size());
+    }
+    if (maxQueueSize - residual > totalSize)
+        return false;
+    return true;
+}
+
 
 void Ieee80211Mac::flushQueue()
 {
@@ -2811,6 +2976,9 @@ Ieee80211Mac::getControlAnswerMode(ModulationType reqMode)
         ModulationType thismode;
         thismode = WifiModulationType::getModulationType(opMode, Ieee80211Descriptor::getDescriptor(idx).bitrate);
 
+        if (opMode == 'n' && carrierFrequency == 5e6)
+            WifiModulationType::setHTFrequency11n5Gh(thismode);
+
       /* If the rate:
        *
        *  - is a mandatory rate for the PHY, and
@@ -2991,3 +3159,13 @@ double Ieee80211Mac::controlFrameTxTime(int bits)
      EV<<" duration="<<duration*1e6<<"us("<<bits<<"bits "<<controlFrameModulationType.getPhyRate()/1e6<<"Mbps)"<<endl;
      return duration;
 }
+
+void Ieee80211Mac::receiveSignal(cComponent *src, simsignal_t id, long x)
+{
+    if (id == endTransmissionSignal && src == radioModulePtr)
+    {
+        // send next frame in the block
+
+    }
+}
+

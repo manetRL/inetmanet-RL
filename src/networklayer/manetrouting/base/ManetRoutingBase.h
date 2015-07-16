@@ -33,8 +33,11 @@
 #include "IInterfaceTable.h"
 #include "IPvXAddress.h"
 #include "ManetAddress.h"
+#include "ManetNetfilterHook.h"
 #include "NotifierConsts.h"
 #include "ICMP.h"
+#include "IPv4.h"
+#include "ILifecycle.h"
 
 #include "ILocator.h"
 
@@ -65,7 +68,11 @@ typedef std::multimap <simtime_t, ManetTimer *> TimerMultiMap;
 typedef std::set<ManetAddress> AddressGroup;
 typedef std::set<ManetAddress>::iterator AddressGroupIterator;
 typedef std::set<ManetAddress>::const_iterator AddressGroupConstIterator;
-class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, protected cListener
+
+/**
+ * Base class for Manet Routing
+ */
+class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, protected cListener, public ILifecycle, public ManetNetfilterHook
 {
   private:
     static simsignal_t mobilityStateChangedSignal;
@@ -135,7 +142,10 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
     ILocator *locator;
 
     int addressSizeBytes;
+
+    bool isOperational;
   protected:
+    bool isNodeOperational(){return isOperational;}
     IRoutingTable*  getInetRoutingTable() const {return inet_rt;}
     IInterfaceTable* getInterfaceTable() const {return inet_ift;}
     bool getIsRegistered() const {return isRegistered;}
@@ -180,15 +190,15 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
      */
     //@{
     //FIXME reduce these variations
-    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface = ManetAddress::ZERO, unsigned int AD = 255);
-    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, int index, unsigned int AD = 255);
-    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, unsigned int AD);
-    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, const struct in_addr &iface, unsigned int AD);
-    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, int index, unsigned int AD);
+    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, const ManetAddress &iface = ManetAddress::ZERO);
+    virtual void omnet_chg_rte(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, bool del_entry, int index);
+    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry);
+    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, const struct in_addr &iface);
+    virtual void omnet_chg_rte(const struct in_addr &dst, const struct in_addr &gtwy, const struct in_addr &netm, short int hops, bool del_entry, int index);
 
-    virtual void deleteIpEntry(const ManetAddress &dst, unsigned int AD = 255) {omnet_chg_rte(dst, dst, dst, 0, true, ManetAddress::ZERO, AD);}
-    virtual void setIpEntry(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, const ManetAddress &iface = ManetAddress::ZERO, unsigned int AD = 255)
-            {omnet_chg_rte(dst, gtwy, netm, hops, false, iface, AD);}
+    virtual void deleteIpEntry(const ManetAddress &dst) {omnet_chg_rte(dst, dst, dst, 0, true);}
+    virtual void setIpEntry(const ManetAddress &dst, const ManetAddress &gtwy, const ManetAddress &netm, short int hops, const ManetAddress &iface = ManetAddress::ZERO)
+            {omnet_chg_rte(dst, gtwy, netm, hops, false, iface);}
     //@}
 
     /**
@@ -207,9 +217,6 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
 
     /// Erase all entries for wlan* interfaces in the routing table
     virtual void omnet_clean_rte();
-
-    /// Erase all entries of OLSR protocol in the routing table
-    virtual void omnet_clean_olsr_rte();
 
     /**
      *  @name Cross layer routines
@@ -314,6 +321,8 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
     virtual void getListRelatedAp(const ManetAddress &, std::vector<ManetAddress>&);
     virtual void setRouteInternalStorege(const ManetAddress &, const ManetAddress &, const bool &);
 
+
+
   public:
     std::string convertAddressToString(const ManetAddress&);
     virtual void setCollaborativeProtocol(cObject *p) {collaborativeProtocol = dynamic_cast<ManetRoutingBase*>(p);}
@@ -353,7 +362,7 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
     // set/delete routing entry
     //FIXME nextHop.isUnspecified() means: need delete entry. Should add a new parameter for choose set/delete, should rename function
     //FIXME setRoute() vs omnet_chg_rte()
-    virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask = ManetAddress::ZERO, unsigned int AD = 255);
+    virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const int &ifaceIndex, const int &hops, const ManetAddress &mask = ManetAddress::ZERO);
     virtual bool setRoute(const ManetAddress & destination, const ManetAddress &nextHop, const char *ifaceName, const int &hops, const ManetAddress &mask = ManetAddress::ZERO);
 
     virtual bool isProactive() = 0;
@@ -443,6 +452,12 @@ class INET_API ManetRoutingBase : public cSimpleModule, public INotifiable, prot
     // used for dimension the address size
     int getAddressSize() {return addressSizeBytes;}
     void setAddressSize(int p) {addressSizeBytes = p;}
+
+    virtual bool handleOperationStage(LifecycleOperation *operation, int stage, IDoneCallback *doneCallback);
+    virtual bool handleNodeStart(IDoneCallback *doneCallback) = 0;
+    virtual bool handleNodeShutdown(IDoneCallback *doneCallback) = 0;
+    virtual void handleNodeCrash() = 0;
+
 };
 
 #define interface80211ptr getInterfaceWlanByAddress()

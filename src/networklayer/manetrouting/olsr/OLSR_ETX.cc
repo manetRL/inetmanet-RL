@@ -77,7 +77,7 @@ void OLSR_ETX_LinkQualityTimer::expire()
     OLSR_ETX *agentaux = check_and_cast<OLSR_ETX *>(agent_);
     agentaux->OLSR_ETX::link_quality();
     // agentaux->scheduleAt(simTime()+agentaux->hello_ival_,this);
-    agentaux->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime()+agentaux->hello_ival_, this));
+    agentaux->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime() + agentaux->hello_ival(), this));
 }
 
 
@@ -87,7 +87,10 @@ void OLSR_ETX_LinkQualityTimer::expire()
 void
 OLSR_ETX::initialize(int stage)
 {
-    if (stage==4)
+    //TODO this function is a modified copy of OLSR::initialize(int stage)
+    ManetRoutingBase::initialize(stage);
+
+    if (stage == 4)
     {
         if (isInMacLayer())
             this->setAddressSize(6);
@@ -100,20 +103,11 @@ OLSR_ETX::initialize(int stage)
  	    OLSR_REFRESH_INTERVAL = par("OLSR_REFRESH_INTERVAL");
         //
         // Do some initializations
-        willingness_ = par("Willingness");
-        hello_ival_ = par("Hello_ival");
-        tc_ival_ = par("Tc_ival");
-        mid_ival_ = par("Mid_ival");
+        willingness_ = &par("Willingness");
+        hello_ival_ = &par("Hello_ival");
+        tc_ival_ = &par("Tc_ival");
+        mid_ival_ = &par("Mid_ival");
         use_mac_ = par("use_mac");
-
-
-        OLSR_HELLO_INTERVAL = SIMTIME_DBL(hello_ival_);
-
-    /// TC messages emission interval.
-        OLSR_TC_INTERVAL = SIMTIME_DBL(tc_ival_);
-
-    /// MID messages emission interval.
-        OLSR_MID_INTERVAL = SIMTIME_DBL(mid_ival_);//   OLSR_TC_INTERVAL
 
 
         if ( par("Fish_eye"))
@@ -186,9 +180,9 @@ OLSR_ETX::initialize(int stage)
         }
 
 
-        hello_timer_.resched(SIMTIME_DBL(hello_ival_));
-        tc_timer_.resched(SIMTIME_DBL(hello_ival_));
-        mid_timer_.resched(SIMTIME_DBL(hello_ival_));
+        hello_timer_.resched(hello_ival());
+        tc_timer_.resched(hello_ival());
+        mid_timer_.resched(hello_ival());
         link_quality_timer_.resched(0.0);
 
         useIndex = false;
@@ -361,6 +355,7 @@ OLSR_ETX::olsr_r1_mpr_computation()
     // For further details please refer to paper
     // Quality of Service Routing in Ad Hoc Networks Using OLSR
 
+
     bool increment;
     state_.clear_mprset();
 
@@ -387,20 +382,48 @@ OLSR_ETX::olsr_r1_mpr_computation()
             opp_error("\n Error conversion nd2hop tuple");
 
 
-        bool ok = true;
-        OLSR_ETX_nb_tuple* nb_tuple = state_.find_sym_nb_tuple(nb2hop_tuple->nb_main_addr());
-        if (nb_tuple == NULL)
-            ok = false;
-        else
+
+        if (isLocalAddress(nb2hop_tuple->nb2hop_addr()))
         {
-            nb_tuple = state_.find_nb_tuple(nb2hop_tuple->nb_main_addr(), OLSR_ETX_WILL_NEVER);
-            if (nb_tuple != NULL)
-                ok = false;
-            else
+            continue;
+        }
+        // excluding:
+        // (i) the nodes only reachable by members of N with willingness WILL_NEVER
+        bool ok = false;
+        for (nbset_t::const_iterator it2 = N.begin(); it2 != N.end(); it2++)
+        {
+            OLSR_nb_tuple* neigh = *it2;
+            if (neigh->nb_main_addr() == nb2hop_tuple->nb_main_addr())
             {
-                nb_tuple = state_.find_sym_nb_tuple(nb2hop_tuple->nb2hop_addr());
-                if (nb_tuple != NULL)
+                if (neigh->willingness() == OLSR_WILL_NEVER)
+                {
                     ok = false;
+                    break;
+                }
+                else
+                {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        if (!ok)
+        {
+            continue;
+        }
+
+        // excluding:
+        // (iii) all the symmetric neighbors: the nodes for which there exists a symmetric
+        //       link to this node on some interface.
+        for (nbset_t::iterator it2 = N.begin(); it2 != N.end(); it2++)
+        {
+            OLSR_ETX_nb_tuple* neigh =dynamic_cast<OLSR_ETX_nb_tuple*>(*it2);
+            if (neigh == NULL)
+                opp_error("Error in tupe");
+            if (neigh->nb_main_addr() == nb2hop_tuple->nb2hop_addr())
+            {
+                ok = false;
+                break;
             }
         }
 
@@ -414,7 +437,12 @@ OLSR_ETX::olsr_r1_mpr_computation()
     {
         OLSR_ETX_nb_tuple* nb_tuple = *it;
         if (nb_tuple->willingness() == OLSR_ETX_WILL_ALWAYS)
+        {
             state_.insert_mpr_addr(nb_tuple->nb_main_addr());
+            // (not in RFC but I think is needed: remove the 2-hop
+            // neighbors reachable by the MPR from N2)
+            CoverTwoHopNeighbors (nb_tuple->nb_main_addr(), N2);
+        }
     }
 
     // Add to Mi the nodes in N which are the only nodes to provide reachability
@@ -2028,7 +2056,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             // add route...
             rtable_.add_entry(it->second, it->second, itDij->second.link().last_node(), 1, -1,itDij->second.link().quality(),itDij->second.link().getDelay());
-            omnet_chg_rte(it->second, it->second, netmask, hopCount, false, itDij->second.link().last_node(), IPv4Route::dOLSR);
+            omnet_chg_rte(it->second, it->second, netmask, hopCount, false, itDij->second.link().last_node());
         }
         else if (it->first > 1)
         {
@@ -2037,7 +2065,7 @@ OLSR_ETX::rtable_dijkstra_computation()
             if (entry==NULL)
                 opp_error("entry not found");
             rtable_.add_entry(it->second, entry->next_addr(), entry->iface_addr(), hopCount, entry->local_iface_index(),itDij->second.link().quality(),itDij->second.link().getDelay());
-            omnet_chg_rte (it->second, entry->next_addr(), netmask, hopCount, false, entry->iface_addr(), IPv4Route::dOLSR);
+            omnet_chg_rte (it->second, entry->next_addr(), netmask, hopCount, false, entry->iface_addr());
         }
         processed_nodes.erase(processed_nodes.begin());
         dijkstra->dijkstraMap.erase(itDij);
@@ -2051,7 +2079,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             // add route...
             rtable_.add_entry(*it, *it, dijkstra->D(*it).link().last_node(), 1, -1);
-            omnet_chg_rte(*it, *it, netmask, 1, false, dijkstra->D(*it).link().last_node(), IPv4Route::dOLSR);
+            omnet_chg_rte(*it, *it, netmask, 1, false, dijkstra->D(*it).link().last_node());
             processed_nodes.insert(*it);
         }
     }
@@ -2066,7 +2094,7 @@ OLSR_ETX::rtable_dijkstra_computation()
             OLSR_ETX_rt_entry* entry = rtable_.lookup(dijkstra->D(*it).link().last_node());
             assert(entry != NULL);
             rtable_.add_entry(*it, dijkstra->D(*it).link().last_node(), entry->iface_addr(), 2, entry->local_iface_index());
-            omnet_chg_rte(*it, dijkstra->D(*it).link().last_node(), netmask, 2, false, entry->iface_addr(), IPv4Route::dOLSR);
+            omnet_chg_rte(*it, dijkstra->D(*it).link().last_node(), netmask, 2, false, entry->iface_addr());
             processed_nodes.insert(*it);
         }
     }
@@ -2083,7 +2111,7 @@ OLSR_ETX::rtable_dijkstra_computation()
                 OLSR_ETX_rt_entry* entry = rtable_.lookup(dijkstra->D(*it).link().last_node());
                 assert(entry != NULL);
                 rtable_.add_entry(*it, entry->next_addr(), entry->iface_addr(), i, entry->local_iface_index());
-                omnet_chg_rte(*it, entry->next_addr(), netmask, i, false, entry->iface_addr(), IPv4Route::dOLSR);
+                omnet_chg_rte(*it, entry->next_addr(), netmask, i, false, entry->iface_addr());
                 processed_nodes.insert(*it);
             }
         }
@@ -2107,7 +2135,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             rtable_.add_entry(tuple->iface_addr(),
                               entry1->next_addr(), entry1->iface_addr(), entry1->dist(), entry1->local_iface_index(),entry1->quality,entry1->delay);
-            omnet_chg_rte(tuple->iface_addr(), entry1->next_addr(), netmask, entry1->dist(), false, entry1->iface_addr(), IPv4Route::dOLSR);
+            omnet_chg_rte(tuple->iface_addr(), entry1->next_addr(), netmask, entry1->dist(), false, entry1->iface_addr());
 
         }
     }
@@ -2460,7 +2488,7 @@ OLSR_ETX::send_hello()
     msg.msg_seq_num() = msg_seq();
 
     msg.hello().reserved() = 0;
-    msg.hello().htime() = OLSR::seconds_to_emf(SIMTIME_DBL(hello_ival()));
+    msg.hello().htime() = OLSR::seconds_to_emf(hello_ival());
     msg.hello().willingness() = willingness();
     msg.hello().count = 0;
 

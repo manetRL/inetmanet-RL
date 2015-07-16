@@ -1348,8 +1348,7 @@ void OSPF::Router::updateExternalRoute(IPv4Address networkAddress, const OSPFASE
         entry->setDestination(networkAddress);
         entry->setNetmask(externalRouteContents.getNetworkMask());
         entry->setInterface(InterfaceTableAccess().get()->getInterfaceById(ifIndex));
-        entry->setSource(IPv4Route::MANUAL);
-        entry->setAdminDist(IPv4Route::dStatic);
+        entry->setSourceType(IPv4Route::MANUAL);
         entry->setMetric(externalRouteContents.getRouteCost());
         simRoutingTable->addRoute(entry);   // IRoutingTable deletes entry pointer
     }
@@ -1403,8 +1402,7 @@ void OSPF::Router::addExternalRouteInIPTable(IPv4Address networkAddress, const O
         entry->setDestination(networkAddress);
         entry->setNetmask(externalRouteContents.getNetworkMask());
         entry->setInterface(simInterfaceTable->getInterfaceById(ifIndex));
-        entry->setSource(IPv4Route::OSPF);
-        entry->setAdminDist(IPv4Route::dOSPF);
+        entry->setSourceType(IPv4Route::OSPF);
         entry->setMetric(OSPF_BGP_DEFAULT_COST);
         simRoutingTable->addRoute(entry);
     }

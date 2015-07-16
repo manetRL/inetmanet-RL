@@ -142,6 +142,7 @@ Ieee80211Mesh::Ieee80211Mesh()
     timeReceptionInterface.clear();
     macInterfaces.clear();
     radioInterfaces.clear();
+    hasSecurity = false;
 }
 
 void Ieee80211Mesh::initializeBase(int stage)
@@ -239,6 +240,17 @@ void Ieee80211Mesh::initialize(int stage)
                        (strcmp(gate("locatorOut")->getPathEndGate()->getOwnerModule()->getName(),"locator")==0 || par("locatorActive").boolValue()))
             hasLocator = true;
 
+        if (gate("macOut")->getPathEndGate()->isConnected())
+            isMultiMac = false;
+        else if (gate("macOutMulti",0)->getPathEndGate()->isConnected())
+            isMultiMac = true;
+        else
+            opp_error("mac not connected");
+
+
+        if (gate("securityOut")->getPathEndGate()->isConnected() &&
+                        (strcmp(gate("securityOut")->getPathEndGate()->getOwnerModule()->getName(),"security")==0 || par("securityActive").boolValue()))
+            hasSecurity = true;
         const char *addrModeStr = par("selectionCriteria").stringValue();
         selectionCriteria = (SelectionCriteria) cEnum::get("SelectionCriteria")->lookup(addrModeStr);
     }
@@ -531,14 +543,41 @@ void Ieee80211Mesh::handleMessage(cMessage *msg)
                 }
             }
         }
+        // if encrypted
+        if(strstr(msg->getName() ,"CCMPFrame")!=NULL && hasSecurity)
+        {
+            EV << "CCMPFrame Frame arrived from MAC, send it to SecurityModule" << msg << "\n";
 
-        if (dynamic_cast<Ieee80211ActionHWMPFrame *>(msg))
+            if(dynamic_cast<Ieee80211MeshFrame *>(msg))
+            {
+                Ieee80211DataOrMgmtFrame *frame = dynamic_cast<Ieee80211DataOrMgmtFrame *>(msg);
+                actualizeReactive(frame,false);
+                Ieee80211MeshFrame *frame2 = (check_and_cast<Ieee80211MeshFrame *>(msg));
+                if(frame2->getFinalAddress().compareTo(myAddress)==0)
+                send(msg, "securityOut");
+                else
+                processFrame(frame);
+            }
+            else
+            send(msg, "securityOut");
+        }
+        else if (dynamic_cast<Ieee80211ActionHWMPFrame *>(msg))
         {
             if ((routingModuleHwmp != NULL) && (routingModuleHwmp->isOurType(PK(msg))))
                 send(msg,"routingOutHwmp");
             else
                 delete msg;
         }
+        // if encrypted
+          else if(hasSecurity && (strstr(msg->getName() ,"AMPE msg 1/4")!=NULL || strstr(msg->getName() ,"AMPE msg 2/4")!=NULL
+                  || strstr(msg->getName() ,"AMPE msg 3/4")!=NULL  || strstr(msg->getName() ,"AMPE msg 4/4")!=NULL
+                  || strstr(msg->getName() ,"Group msg 1/2")!=NULL  || strstr(msg->getName() ,"Group msg 2/2")!=NULL
+                  ))
+          {
+              EV << " Frame arrived from MAC, send it to SecurityModule" << msg << "\n";
+              send(msg, "securityOut");
+          }
+
         else
         {
             Ieee80211DataOrMgmtFrame *frame = dynamic_cast<Ieee80211DataOrMgmtFrame *>(msg);
@@ -580,6 +619,56 @@ void Ieee80211Mesh::handleMessage(cMessage *msg)
     {
         handleWateGayDataReceive(PK(msg));
     }
+    else if(strstr(msg->getName() ,"Beacon")!=NULL ){sendOrEnqueue(PK(msg));}
+    else if(   strstr(msg->getName() ,"Beacon")!=NULL
+            || strstr(msg->getName() ,"Open Authentication Request")!=NULL || strstr(msg->getName() ,"Open Authentication Response")!=NULL
+            || strstr(msg->getName() ,"Auth")!=NULL || strstr(msg->getName() ,"Auth-OK")!=NULL || strstr(msg->getName() ,"Auth-ERROR")!=NULL
+            || strstr(msg->getName() ,"Auth msg 1/4")!=NULL || strstr(msg->getName() ,"Auth msg 2/4")!=NULL ||strstr(msg->getName() ,"Auth msg 3/4")!=NULL
+            || strstr(msg->getName() ,"Auth msg 4/4")!=NULL || strstr(msg->getName() , "Group msg 1/2")!=NULL || strstr(msg->getName() ,"Group msg 2/2")!=NULL
+            || strstr(msg->getName() ,"SAE msg 1/4")!=NULL  || strstr(msg->getName() ,"SAE msg 2/4")!=NULL
+            || strstr(msg->getName() ,"SAE msg 3/4")!=NULL  || strstr(msg->getName() ,"SAE-OK msg 4/4")!=NULL
+            || strstr(msg->getName() ,"AMPE msg 1/4")!=NULL || strstr(msg->getName() ,"AMPE msg 2/4")!=NULL
+            || strstr(msg->getName() ,"AMPE msg 3/4")!=NULL || strstr(msg->getName() ,"AMPE msg 4/4")!=NULL )
+    {
+        sendOrEnqueue(PK(msg));
+    }
+    else if (strstr(gateName,"securityIn")!=NULL && hasSecurity)
+    {
+        if(strstr(msg->getName() ,"CCMPFrame")!=NULL)
+        {
+            EV << "CCMPFrame Frame arrived from Security, send it to Mac_" <<endl;
+            sendOrEnqueue(PK(msg));
+
+        }
+        else if(strstr(msg->getName() ,"DecCCMP")!=NULL)
+        {
+            EV << "Frame arrived from Security, send it to upper layers: " << msg << "\n";
+
+            Ieee80211DataOrMgmtFrame *frame = dynamic_cast<Ieee80211DataOrMgmtFrame *>(msg);
+            Ieee80211MeshFrame *frame2  = dynamic_cast<Ieee80211MeshFrame *>(msg);
+            if (frame2)
+                frame2->setTTL(frame2->getTTL()-1);
+            actualizeReactive(frame,false);
+
+            if (dynamic_cast<Ieee80211ActionHWMPFrame *>(msg))
+            {
+                if ((routingModuleHwmp != NULL) && (routingModuleHwmp->isOurType(PK(msg))))
+                    send(msg,"routingOutHwmp");
+                else
+                    delete msg;
+            }
+            else
+               // delete msg;
+                processFrame(frame);
+      }
+
+
+        else{
+
+            sendOrEnqueue(PK(msg));
+        }
+    }
+
     else
     {
         cPacket *pk = PK(msg);
@@ -591,6 +680,7 @@ void Ieee80211Mesh::handleMessage(cMessage *msg)
         handleUpperMessage(pk);
     }
 }
+
 
 void Ieee80211Mesh::handleTimer(cMessage *msg)
 {
@@ -653,6 +743,7 @@ void Ieee80211Mesh::handleRoutingMessage(cPacket *msg)
 
 void Ieee80211Mesh::handleUpperMessage(cPacket *msg)
 {
+    EV<<"HandleUpperMessage"<<endl;
     Ieee80211DataFrame *frame = encapsulate(msg);
     if (frame)
     {
@@ -685,6 +776,7 @@ void Ieee80211Mesh::handleCommand(int msgkind, cPolymorphic *ctrl)
 
 Ieee80211DataFrame *Ieee80211Mesh::encapsulate(cPacket *msg)
 {
+    EV<<"Encapsulate"<<endl;
     Ieee80211MeshFrame *frame = new Ieee80211MeshFrame(msg->getName());
     frame->setSubType(UPPERMESSAGE);
     frame->setTTL(maxTTL);
@@ -1124,6 +1216,9 @@ void Ieee80211Mesh::handleDataFrame(Ieee80211DataFrame *frame)
         finalAddress = frame2->getFinalAddress();
         totalHops = frame2->getTotalHops();
         totalFixHops = frame2->getTotalStaticHops();
+        EV<<"totalHops"<<totalHops<<endl;
+        EV<<"totalFixHops"<< totalFixHops<<endl;
+
     }
 
     cPacket *msg = decapsulate(frame);
@@ -1218,7 +1313,7 @@ void Ieee80211Mesh::handleDataFrame(Ieee80211DataFrame *frame)
             {
                 if (totalHops >= 0)
                 {
-                    std::vector<MACAddress> path;
+                    std::deque<MACAddress> path;
                     int patSize = 0;
                     if (getOtpimunRoute)
                     {
@@ -1228,7 +1323,8 @@ void Ieee80211Mesh::handleDataFrame(Ieee80211DataFrame *frame)
                             emit(numHopsSignal,totalHops - patSize);
                         }
                     }
-                    emit(numFixHopsSignal,totalFixHops/totalHops);
+                    if(totalHops)
+                        emit(numFixHopsSignal,totalFixHops/totalHops);
                 }
                 sendUp(msg);
             }
@@ -1243,7 +1339,34 @@ void Ieee80211Mesh::handleDataFrame(Ieee80211DataFrame *frame)
 
 void Ieee80211Mesh::handleAuthenticationFrame(Ieee80211AuthenticationFrame *frame)
 {
-    dropManagementFrame(frame);
+    if (!hasSecurity)
+    {
+        dropManagementFrame(frame);
+        return;
+    }
+    EV << "Authentication from MAC, send it to SecurityModule" << frame << endl;
+    send(frame, "securityOut");
+}
+void Ieee80211Mesh::handleCCMPFrame(CCMPFrame *frame)
+{
+    if (!hasSecurity)
+    {
+        delete frame;
+        return;
+    }
+    EV << "CCMP Frame from MAC, send it to SecurityModule" << frame << endl;
+    send(frame, "securityOut");
+}
+
+void Ieee80211Mesh::handleBeaconFrame(Ieee80211BeaconFrame *frame)
+{
+    if (!hasSecurity)
+    {
+        dropManagementFrame(frame);
+        return;
+    }
+    EV << "Beacon from MAC, send it to SecurityModule" << frame << endl;
+    send(frame, "securityOut");
 }
 
 void Ieee80211Mesh::handleDeauthenticationFrame(Ieee80211DeauthenticationFrame *frame)
@@ -1276,10 +1399,6 @@ void Ieee80211Mesh::handleDisassociationFrame(Ieee80211DisassociationFrame *fram
     dropManagementFrame(frame);
 }
 
-void Ieee80211Mesh::handleBeaconFrame(Ieee80211BeaconFrame *frame)
-{
-    dropManagementFrame(frame);
-}
 
 void Ieee80211Mesh::handleProbeRequestFrame(Ieee80211ProbeRequestFrame *frame)
 {
@@ -1310,7 +1429,40 @@ void Ieee80211Mesh::sendOut(cMessage *msg)
     }
     else if (frameMesh && frameMesh->getSubType() == UPPERMESSAGE)
         numDataBytes += frameMesh->getByteLength();
-    send(msg, "macOut",msg->getKind());
+    //mhn
+    if(hasSecurity)
+    {
+        if (msg->arrivedOn("securityIn"))
+        {
+            if (isMultiMac)
+                 send(msg, "macOutMulti",msg->getKind());
+            else
+                 send(msg, "macOut");
+        }
+        else  if (dynamic_cast<CCMPFrame *>(msg))
+        {
+            EV << "CCMPFrame Frame arrived from Security, send it to Mac" <<endl;
+            error("mhn");
+            if (isMultiMac)
+                 send(msg, "macOutMulti",msg->getKind());
+            else
+                 send(msg, "macOut");
+        }
+        else
+        {
+            packetRequested++;
+            send(msg, "securityOut");
+        }
+    }
+    else
+    {
+        packetRequested++;
+        if (isMultiMac)
+            send(msg, "macOutMulti",msg->getKind());
+        else
+            send(msg, "macOut");
+
+    }
 }
 
 
@@ -2197,7 +2349,7 @@ void Ieee80211Mesh::handleWateGayDataReceive(cPacket *pkt)
             if (encapPkt && isUpper)
             {
                 sendUp(encapPkt);
-                std::vector<MACAddress> path;
+                std::deque<MACAddress> path;
                 int patSize = 0;
                 if (getOtpimunRoute)
                 {

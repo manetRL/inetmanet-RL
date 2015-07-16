@@ -61,7 +61,7 @@
  *
  * @ingroup macLayer
  */
-class INET_API Ieee80211Mac : public WirelessMacBase
+class INET_API Ieee80211Mac : public WirelessMacBase, public cListener
 {
 #ifdef  USEMULTIQUEUE
     typedef MultiQueue Ieee80211DataOrMgmtFrameList;
@@ -88,6 +88,26 @@ class INET_API Ieee80211Mac : public WirelessMacBase
 
     typedef std::map<MACAddress, Ieee80211ASFTuple> Ieee80211ASFTupleList;
 
+
+    struct Ieee80211PacketErrorInfo
+    {
+        uint64_t Size;
+        bool hasErrors;
+        simtime_t timeRec;
+        Ieee80211PacketErrorInfo& operator=(const Ieee80211PacketErrorInfo& other)
+        {
+            if (this==&other) return *this;
+            this->Size = other.Size;
+            this->hasErrors = other.hasErrors;
+            this->timeRec = other.timeRec;
+            return *this;
+        }
+    };
+
+    bool registerErrors;
+    typedef std::map<MACAddress, std::vector<Ieee80211PacketErrorInfo> > Ieee80211ErrorInfo;
+    Ieee80211ErrorInfo errorInfo;
+
     enum
     {
         RATE_ARF,   // Auto Rate Fallback
@@ -100,6 +120,12 @@ class INET_API Ieee80211Mac : public WirelessMacBase
     bool validRecMode;
     bool useModulationParameters;
     bool prioritizeMulticast;
+    // used by 11n
+    double carrierFrequency;
+    ModulationType controlFrameModulationType;
+    ModulationType transmisionMode;
+    ModulationType basicTransmisionMode;
+
   protected:
     /**
      * @name Configuration parameters
@@ -115,7 +141,6 @@ class INET_API Ieee80211Mac : public WirelessMacBase
     /** The basic bitrate (1 or 2 Mbps) is used to transmit control frames and multicast/broadcast frames */
     double basicBitrate;
     double controlBitRate;
-    ModulationType controlFrameModulationType;
 
     // Variables used by the auto bit rate
     bool forceBitRate; //if true the
@@ -240,6 +265,7 @@ class INET_API Ieee80211Mac : public WirelessMacBase
         long bits;
         simtime_t minjitter;
         simtime_t maxjitter;
+        unsigned int saveSize;
     };
 
     struct EdcaOutVector {
@@ -247,6 +273,9 @@ class INET_API Ieee80211Mac : public WirelessMacBase
         cOutVector *macDelay;
         cOutVector *throughput;
     };
+
+    int initialBackoffExponent; // initial exponential of backoff value
+    int difsSlot; // slots used to compute the difs value
 
     std::vector<Edca> edcCAF;
     std::vector<EdcaOutVector> edcCAFOutVector;
@@ -343,7 +372,7 @@ class INET_API Ieee80211Mac : public WirelessMacBase
     /** Indicates which queue is acite. Depends on access category. */
     int currentAC;
 
-    /** Remember currentAC. We need this to figure out internal colision. */
+    /** Remember currentAC. We need this to figure out internal collision. */
     int oldcurrentAC;
 
     /** XXX Remember for which AC we wait for ACK. */
@@ -492,12 +521,11 @@ class INET_API Ieee80211Mac : public WirelessMacBase
     //@{
     virtual simtime_t getSIFS();
     virtual simtime_t getSlotTime();
-    virtual simtime_t getDIFS(int category = -1);
+    virtual simtime_t getDIFS();
     virtual simtime_t getAIFS(int AccessCategory);
     virtual simtime_t getEIFS();
     virtual simtime_t getPIFS();
     virtual simtime_t computeBackoffPeriod(Ieee80211Frame *msg, int r);
-    virtual simtime_t getHeaderTime(double bitrate);
     virtual double controlFrameTxTime(int bits);
     //@}
 
@@ -582,6 +610,8 @@ class INET_API Ieee80211Mac : public WirelessMacBase
     virtual unsigned int transmissionQueueSize();
     virtual void flushQueue();
     virtual void clearQueue();
+
+    bool transmissionQueueWithReserveFull(int categorie);
 
     /** @brief Mapping to access categories. */
     virtual int mappingAccessCategory(Ieee80211DataOrMgmtFrame *frame);
@@ -690,6 +720,10 @@ class INET_API Ieee80211Mac : public WirelessMacBase
         nb->fireChangeNotification(category, pkt);
         pkt->setKind(tempKind);
     }
+    static simsignal_t endTransmissionSignal; //enum
+    cSimpleModule *radioModulePtr;
+    //cListener:
+    virtual void receiveSignal(cComponent *src, simsignal_t id, long x);
   public:
     virtual void setQueueModeTrue() {queueMode = true;}
     virtual void setQueueModeFalse() {queueMode = false;}

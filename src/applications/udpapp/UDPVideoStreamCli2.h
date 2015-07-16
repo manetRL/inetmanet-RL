@@ -25,14 +25,14 @@
 
 #include "INETDefs.h"
 #include "UDPSocket.h"
-#include "AppBase.h"
+#include "ApplicationBase.h"
 /**
  * A "Realtime" VideoStream client application.
  *
  * Basic video stream application. Clients connect to server and get a stream of
  * video back.
  */
-class INET_API UDPVideoStreamCli2 : public AppBase
+class INET_API UDPVideoStreamCli2 : public ApplicationBase
 {
   protected:
     UDPSocket socket;
@@ -65,6 +65,7 @@ class INET_API UDPVideoStreamCli2 : public AppBase
   protected:
     ///@name Overridden cSimpleModule functions
     //@{
+    virtual int numInitStages() const { return 4; }
     virtual void initialize(int stage);
     virtual void finish();
     virtual void handleMessageWhenUp(cMessage *msg);
@@ -76,9 +77,9 @@ class INET_API UDPVideoStreamCli2 : public AppBase
     virtual void timeOutData();
 
     //AppBase:
-    virtual bool startApp(IDoneCallback *doneCallback);
-    virtual bool stopApp(IDoneCallback *doneCallback);
-    virtual bool crashApp(IDoneCallback *doneCallback);
+    virtual bool handleNodeStart(IDoneCallback *doneCallback);
+    virtual bool handleNodeShutdown(IDoneCallback *doneCallback);
+    virtual void handleNodeCrash();
 };
 
 #endif

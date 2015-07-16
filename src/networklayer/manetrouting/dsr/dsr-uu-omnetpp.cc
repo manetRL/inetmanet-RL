@@ -24,6 +24,8 @@
 
 //#include <iostream>
 #include "dsr-uu-omnetpp.h"
+
+#include "IPSocket.h"
 #include "IPv4Address.h"
 #include "Ieee802Ctrl_m.h"
 #include "Ieee80211Frame_m.h"
@@ -208,6 +210,8 @@ void DSRUUTimer::cancel()
 
 void DSRUU::initialize(int stage)
 {
+    cSimpleModule::initialize(stage);
+
     //current_time =simTime();
     if (!is_init)
     {
@@ -327,13 +331,17 @@ void DSRUU::initialize(int stage)
         etx_timer.setOwer(this);
         is_init = true;
     }
-
-
-    if (stage==4)
+    else if (stage == 4)
     {
+        IPSocket ipSocket(gate("to_ip"));
+        ipSocket.registerProtocol(IP_PROT_MANET);
+        ipSocket.registerProtocol(IP_PROT_DSR);
+
         /* Search the 80211 interface */
         inet_rt = RoutingTableAccess().get();
         inet_ift = InterfaceTableAccess().get();
+
+        initHook(this);
 
         int  num_80211 = 0;
         InterfaceEntry *   ie;
@@ -468,8 +476,8 @@ DSRUU::~DSRUU()
         pkt = DSRUU::lifoDsrPkt;
         lifo_token++;
     }
-
 }
+
 void DSRUU::handleTimer(cMessage* msg)
 {
     if (ack_timer.testAndExcute(msg))
@@ -851,7 +859,7 @@ void DSRUU::EtxMsgSend(unsigned long data)
     {
         // remove old data
         ETXEntry *entry = (*iter).second;
-        while (simTime()-entry->timeVector.front()>etxWindowSize)
+        while (!entry->timeVector.empty() && simTime()-entry->timeVector.front()>etxWindowSize)
             entry->timeVector.erase(entry->timeVector.begin());
         if (entry->timeVector.size()==0)
         {
@@ -940,7 +948,7 @@ void DSRUU::EtxMsgProc(cMessage *m)
     else
     {
         entry = (*it).second;
-        while (simTime()-entry->timeVector.front()>etxWindowSize)
+        while (!entry->timeVector.empty() && simTime()-entry->timeVector.front()>etxWindowSize)
             entry->timeVector.erase(entry->timeVector.begin());
     }
     double delivery;

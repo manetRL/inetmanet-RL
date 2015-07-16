@@ -41,7 +41,7 @@ UDPBasicBurstNotification::~UDPBasicBurstNotification()
         delete addressModule;
 }
 
-void UDPBasicBurstNotification::processStart()
+void UDPBasicBurstNotification::initialConfiguration()
 {
     socket.setOutputGate(gate("udpOut"));
     socket.bind(localPort);
@@ -102,7 +102,13 @@ void UDPBasicBurstNotification::processStart()
             destAddr = chooseDestAddr();
         activeBurst = true;
     }
+}
 
+
+void UDPBasicBurstNotification::processStart()
+{
+    if (!par("configureInInit").boolValue())
+        initialConfiguration();
     nextSleep = simTime();
     nextBurst = simTime();
     nextPkt = simTime();
@@ -172,7 +178,11 @@ void UDPBasicBurstNotification::generateBurst()
         // Check address type
         // Check address type
         if (!sendBroadcast(destAddr, payload))
-            socket.sendTo(payload, destAddr, destPort,outputInterface);
+        {
+            UDPSocket::SendOptions options;
+            options.outInterfaceId = outputInterface;
+            socket.sendTo(payload, destAddr, destPort, &options);
+        }
         numSent++;
     }
     // Next timer

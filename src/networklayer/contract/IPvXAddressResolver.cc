@@ -262,7 +262,7 @@ bool IPvXAddressResolver::getIPv4AddressFrom(IPvXAddress& retAddr, IInterfaceTab
     for (int i=0; i < ift->getNumInterfaces(); i++)
     {
         InterfaceEntry *ie = ift->getInterface(i);
-        if (!ie->ipv4Data() || ie->isLoopback())
+        if (ie->isLoopback())
             continue;
         if (getInterfaceIPv4Address(retAddr, ie, netmask))
             return true;
@@ -438,14 +438,14 @@ cModule *IPvXAddressResolver::findHostWithAddress(const IPvXAddress & add)
                 if (add.isIPv6())
                 {
 #ifdef WITH_IPv6
-                    if (entry->ipv6Data()->hasAddress(add.get6()))
+                    if (entry->ipv6Data() && entry->ipv6Data()->hasAddress(add.get6()))
                         return mod;
 #endif
                 }
                 else
                 {
 #ifdef WITH_IPv4
-                    if (entry->ipv4Data()->getIPAddress() == add.get4())
+                    if (entry->ipv4Data() && entry->ipv4Data()->getIPAddress() == add.get4())
                         return mod;
 #endif
                 }
@@ -453,55 +453,4 @@ cModule *IPvXAddressResolver::findHostWithAddress(const IPvXAddress & add)
         }
     }
     return NULL;
-}
-
-cModule * IPvXAddressResolver::findModuleWithAddress(const IPvXAddress & add)
-{
-    if (add.isUnspecified() || add.isMulticast())
-        return NULL;
-
-    cTopology topo("topo");
-    topo.extractByProperty("node");
-
-    EV << "cTopology found " << topo.getNumNodes() << " nodes\n";
-    // fill in isIPNode, ift and rt members in nodeInfo[]
-
-    for (int i=0; i<topo.getNumNodes(); i++)
-    {
-        cModule *mod = topo.getNode(i)->getModule();
-        IInterfaceTable * itable = IPvXAddressResolver().findInterfaceTableOf(mod);
-        if (itable != NULL)
-        {
-            for (int i = 0; i < itable->getNumInterfaces(); i++)
-            {
-                InterfaceEntry *entry = itable->getInterface(i);
-                if (entry->isLoopback())
-                    continue;
-                if (add.isIPv6())
-                {
-                    if (!entry->ipv6Data())
-                        continue;
-                    if (entry->ipv6Data()->hasAddress(add.get6()))
-                        return mod;
-                }
-                else
-                {
-                    if (!entry->ipv4Data())
-                        continue;
-                    if (entry->ipv4Data()->getIPAddress() == add.get4())
-                        return mod;
-
-                }
-            }
-        }
-    }
-    return NULL;
-}
-
-bool IPvXAddressResolver::hasNetworkLayer(cModule *host)
-{
-    cModule *mod = host->getSubmodule("networkLayer");
-    if (mod)
-        return true;
-    return false;
 }

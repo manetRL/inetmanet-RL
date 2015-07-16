@@ -27,6 +27,7 @@
 #include "UDPPacket.h"
 #include "ModuleAccess.h"
 #include "IPv4.h"
+#include "ControlManetRouting_m.h"
 
 Define_Module( DYMO );
 
@@ -52,11 +53,11 @@ DYMO::DYMO()
     DYMO_INTERFACES = NULL;
 }
 
-void DYMO::initialize(int aStage)
+void DYMO::initialize(int stage)
 {
-    cSimpleModule::initialize(aStage);
+    ManetRoutingBase::initialize(stage);
 
-    if (4 == aStage)
+    if (stage == 4)
     {
         ownSeqNumLossTimeout = new DYMO_Timer(this, "OwnSeqNumLossTimeout");
         WATCH_PTR(ownSeqNumLossTimeout);
@@ -208,6 +209,12 @@ void DYMO::handleMessage(cMessage* apMsg)
 
     cMessage * msg_aux = NULL;
     UDPPacket* udpPacket = NULL;
+
+    if (!isNodeOperational())
+    {
+        delete apMsg;
+        return;
+    }
 
     if (apMsg->isSelfMessage())
     {
@@ -1226,4 +1233,34 @@ void DYMO::processLinkBreak(const cObject *details)
     if (dgram)
         packetFailed(dgram);
 }
+
+
+bool DYMO::handleNodeStart(IDoneCallback *doneCallback)
+{
+
+    rateLimiterRREQ = new DYMO_TokenBucket(RREQ_RATE_LIMIT, RREQ_BURST_LIMIT, simTime());
+    dymo_routingTable = new DYMO_RoutingTable(this, IPv4Address(myAddr));
+    queuedDataPackets = new DYMO_DataQueue(this, BUFFER_SIZE_PACKETS, BUFFER_SIZE_BYTES);
+    return true;
+}
+
+bool DYMO::handleNodeShutdown(IDoneCallback *doneCallback)
+{
+    delete dymo_routingTable;
+    outstandingRREQList.delAll();
+    delete rateLimiterRREQ;
+    delete queuedDataPackets;
+    cancelEvent(timerMsg);
+    return true;
+}
+
+void DYMO::handleNodeCrash()
+{
+    delete dymo_routingTable;
+    outstandingRREQList.delAll();
+    delete rateLimiterRREQ;
+    delete queuedDataPackets;
+    cancelEvent(timerMsg);
+}
+
 

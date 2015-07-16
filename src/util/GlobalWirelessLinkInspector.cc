@@ -248,7 +248,7 @@ void GlobalWirelessLinkInspector::initRoutingTables (const cModule* mod,const Ma
         data.routesVector = new RouteMap;
         data.mod = const_cast<cModule*> (mod);
         vect.push_back(data);
-        globalRouteMap->insert(std::make_pair<ManetAddress,ProtocolsRoutes>(orgA,vect));
+        globalRouteMap->insert(std::make_pair(orgA,vect));
     }
     else
     {
@@ -399,6 +399,7 @@ bool GlobalWirelessLinkInspector::getNumNodes(ManetAddress node, int &cont)
 
 bool GlobalWirelessLinkInspector::areNeighbour(const ManetAddress &node1, const ManetAddress &node2,bool &areNei)
 {
+    areNei = false;
     if (globalLocatorMap == NULL)
         return false;
     LocatorIteartor it1 =  globalLocatorMap->find(node1);
@@ -411,8 +412,6 @@ bool GlobalWirelessLinkInspector::areNeighbour(const ManetAddress &node1, const 
     ManetAddress ap2 = it2->second;
     if (ap1 == ap2)
         areNei = true;
-    else
-        areNei = false;
     return true;
 }
 

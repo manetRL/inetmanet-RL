@@ -111,6 +111,8 @@ TCPStateVariables::TCPStateVariables()
     usedRcvBuffer = 0;
     freeRcvBuffer = 0;
     tcpRcvQueueDrops = 0;
+    sendQueueLimit = 0;
+    queueUpdate = true;
 }
 
 std::string TCPStateVariables::info() const
@@ -123,6 +125,11 @@ std::string TCPStateVariables::info() const
     out << " rcv_nxt=" << rcv_nxt;
     out << " rcv_wnd=" << rcv_wnd;
     return out.str();
+}
+
+void TCPStateVariables::setSendQueueLimit(uint32 newLimit)
+{
+    sendQueueLimit = newLimit;
 }
 
 std::string TCPStateVariables::detailedInfo() const
@@ -369,6 +376,7 @@ bool TCPConnection::processAppCommand(cMessage *msg)
         case TCP_E_CLOSE: process_CLOSE(event, tcpCommand, msg); break;
         case TCP_E_ABORT: process_ABORT(event, tcpCommand, msg); break;
         case TCP_E_STATUS: process_STATUS(event, tcpCommand, msg); break;
+        case TCP_E_QUEUE_BYTES_LIMIT: process_QUEUE_BYTES_LIMIT(event, tcpCommand, msg); break;
         default:
             throw cRuntimeError(tcpMain, "wrong event code");
     }
@@ -388,6 +396,7 @@ TCPEventCode TCPConnection::preanalyseAppCommandEvent(int commandCode)
         case TCP_C_CLOSE:        return TCP_E_CLOSE;
         case TCP_C_ABORT:        return TCP_E_ABORT;
         case TCP_C_STATUS:       return TCP_E_STATUS;
+        case TCP_C_QUEUE_BYTES_LIMIT: return TCP_E_QUEUE_BYTES_LIMIT;
         default:
             throw cRuntimeError(tcpMain, "Unknown message kind in app command");
     }

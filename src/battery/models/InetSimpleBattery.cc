@@ -29,7 +29,8 @@
 #include "ILifecycle.h"
 #include "NodeOperations.h"
 #include "NodeStatus.h"
-
+#include <string>     // std::string, std::to_string
+#include <iomanip>
 
 Define_Module(InetSimpleBattery);
 
@@ -350,7 +351,11 @@ void InetSimpleBattery::deductAndCheck()
 
     lastUpdateTime = now;
 
-    EV << "residual capacity = " << residualCapacity << "\n";
+    std::ostringstream resCap;
+
+    resCap << std::setprecision(10) << residualCapacity;
+
+    EV << "residual capacity = " << residualCapacity << " " << resCap.str() <<"\n";
 
     cDisplayString* display_string = &getParentModule()->getDisplayString();
 
@@ -405,7 +410,7 @@ static void disableRecursive(cModule *curmod)
         if (power2)
         {
             NodeCrashOperation op;
-            power2->handleOperationStage(&op, NodeCrashOperation::STAGE_CRASH, NULL);
+            power2->handleOperationStage(&op, NodeStartOperation::STAGE_LOCAL, NULL);
         }
         disableRecursive(submod);
     }

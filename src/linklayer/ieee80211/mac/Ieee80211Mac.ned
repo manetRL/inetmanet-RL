@@ -61,6 +61,11 @@ simple Ieee80211Mac
                                           // a generated MAC address in init stage 0.
         string queueModule = default(""); // name of optional external queue module
         int maxQueueSize = default(50);   // max queue length in frames; only used if queueModule==""
+        
+        int saveSize0 = default(0);   // minum size save for categorie 0, only used if queueModule==""
+        int saveSize1 = default(0);   // minum size save for categorie 0, only used if queueModule==""
+        int saveSize2 = default(0);   // minum size save for categorie 0, only used if queueModule==""
+        int saveSize3 = default(0);   // minum size save for categorie 0, only used if queueModule==""
 
         bool EDCA = default(false); // enable Enhanced Distributed Channel Access (802.11e)
         // parameters for EDCA = true
@@ -76,9 +81,9 @@ simple Ieee80211Mac
         double TXOP2 @unit(s) = default(3.008ms);
         double TXOP3 @unit(s) = default(1.504ms);
         // parameters for EDCA = false
-        int AIFSN = default(2); // if there is only one AC (EDCA = false)
+        int AIFSN = default(2); // if there is only one AC (EDCA = false) it is used to compute Difs value always
 
-        bool useModulationParameters = default(false); // if true, slot time, DIFS, and ACK timeout (aPHY-RX-START-Delay) are function of modulation time (2007 standard)
+        bool useModulationParameters = default(true); // if true, slot time, DIFS, and ACK timeout (aPHY-RX-START-Delay) are function of modulation time (2007 standard)
         bool prioritizeMulticast = default(false); // if true, prioritize multicast frames (9.3.2.1 Fundamental access)
 
         double bitrate @unit("bps");
@@ -96,7 +101,7 @@ simple Ieee80211Mac
         int cwMaxData = default(-1); // contention window for normal data frames, -1 means default
         int cwMinMulticast = default(-1); // contention window for broadcast messages, -1 means default
 
-        double phyHeaderLength @unit("s") = default(-1s); // when <0,, the MAC will compute it in function of the modulation type
+        double phyHeaderLength @unit("s") = default(-1s); // when <0, the MAC will compute it in function of the modulation type
         bool forceBitRate = default(false); // if true, the MAC will force the bitrate to the physical layer
         int autoBitrate @enum(0,1,2) = default(0); // 0 = constant bit rate (autobitrate algorithm disabled), 1 = ARF Rate, 2 = AARF Rate
         // parameters used by the autobitrate

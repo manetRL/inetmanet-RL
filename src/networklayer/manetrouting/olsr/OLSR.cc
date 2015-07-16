@@ -136,7 +136,7 @@ OLSR_HelloTimer::expire()
 {
     agent_->send_hello();
     // agent_->scheduleAt(simTime()+agent_->hello_ival_- JITTER,this);
-    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime()+agent_->hello_ival_- agent_->jitter(), this));
+    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime() + agent_->hello_ival() - agent_->jitter(), this));
 }
 
 ///
@@ -149,7 +149,7 @@ OLSR_TcTimer::expire()
     if (agent_->mprselset().size() > 0)
         agent_->send_tc();
     // agent_->scheduleAt(simTime()+agent_->tc_ival_- JITTER,this);
-    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime()+agent_->tc_ival_- agent_->jitter(), this));
+    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime() + agent_->tc_ival() - agent_->jitter(), this));
 
 }
 
@@ -166,7 +166,7 @@ OLSR_MidTimer::expire()
         return; // not multi-interface support
     agent_->send_mid();
 //  agent_->scheduleAt(simTime()+agent_->mid_ival_- JITTER,this);
-    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime()+agent_->mid_ival_- agent_->jitter(), this));
+    agent_->timerQueuePtr->insert(std::pair<simtime_t, OLSR_Timer *>(simTime() + agent_->mid_ival() - agent_->jitter(), this));
 #endif
 }
 
@@ -449,10 +449,11 @@ OLSR_MsgTimer::expire()
 
 ///
 ///
-void
-OLSR::initialize(int stage)
+void OLSR::initialize(int stage)
 {
-    if (stage==4)
+    ManetRoutingBase::initialize(stage);
+
+    if (stage == 4)
     {
 
        if (isInMacLayer())
@@ -468,19 +469,11 @@ OLSR::initialize(int stage)
 
         //
         // Do some initializations
-        willingness_ = par("Willingness");
-        hello_ival_ = par("Hello_ival");
-        tc_ival_ = par("Tc_ival");
-        mid_ival_ = par("Mid_ival");
+        willingness_ = &par("Willingness");
+        hello_ival_ = &par("Hello_ival");
+        tc_ival_ = &par("Tc_ival");
+        mid_ival_ = &par("Mid_ival");
         use_mac_ = par("use_mac");
-
-        OLSR_HELLO_INTERVAL = SIMTIME_DBL(tc_ival_);
-
-     /// TC messages emission interval.
-         OLSR_TC_INTERVAL = SIMTIME_DBL(tc_ival_);
-
-     /// MID messages emission interval.
-         OLSR_MID_INTERVAL = SIMTIME_DBL(mid_ival_);//   OLSR_TC_INTERVAL
 
 
         if (par("reduceFuncionality"))
@@ -528,9 +521,9 @@ OLSR::initialize(int stage)
         }
 
 
-        hello_timer_.resched(SIMTIME_DBL(hello_ival_));
-        tc_timer_.resched(SIMTIME_DBL(hello_ival_));
-        mid_timer_.resched(SIMTIME_DBL(hello_ival_));
+        hello_timer_.resched(hello_ival());
+        tc_timer_.resched(hello_ival());
+        mid_timer_.resched(hello_ival());
         if (use_mac())
         {
             linkLayerFeeback();
@@ -559,6 +552,11 @@ OLSR::initialize(int stage)
 
 void OLSR::handleMessage(cMessage *msg)
 {
+    if (!isNodeOperational())
+    {
+        delete msg;
+        return;
+    }
     if (msg->isSelfMessage())
     {
         //OLSR_Timer *timer=dynamic_cast<OLSR_Timer*>(msg);
@@ -1290,11 +1288,11 @@ OLSR::rtable_computation()
         for (rtable_t::const_iterator itRtTable = rtable_.getInternalTable()->begin();itRtTable != rtable_.getInternalTable()->begin();++itRtTable)
         {
             nsaddr_t addr = itRtTable->first;
-            omnet_chg_rte(addr, addr,netmask,1, true, addr, IPv4Route::dOLSR);
+            omnet_chg_rte(addr, addr,netmask,1, true, addr);
         }
     }
     else
-        omnet_clean_olsr_rte(); // clean OLSR entry in IP tables
+        omnet_clean_rte(); // clean IP tables
 
     rtable_.clear();
 
@@ -1323,14 +1321,12 @@ OLSR::rtable_computation()
                         omnet_chg_rte(link_tuple->nb_iface_addr(),
                                        link_tuple->nb_iface_addr(),
                                        netmask,
-                                       1, false, link_tuple->local_iface_addr(),
-                                       IPv4Route::dOLSR);
+                                       1, false, link_tuple->local_iface_addr());
                     else
                         omnet_chg_rte(link_tuple->nb_iface_addr(),
                                        link_tuple->nb_iface_addr(),
                                        netmask,
-                                       1, false, link_tuple->local_iface_index(),
-                                       IPv4Route::dOLSR);
+                                       1, false, link_tuple->local_iface_index());
 
                     if (link_tuple->nb_iface_addr() == nb_tuple->nb_main_addr())
                         nb_main_addr = true;
@@ -1347,15 +1343,13 @@ OLSR::rtable_computation()
                     omnet_chg_rte(nb_tuple->nb_main_addr(),
                                    lt->nb_iface_addr(),
                                    netmask,// Default mask
-                                   1, false, lt->local_iface_addr(),
-                                   IPv4Route::dOLSR);
+                                   1, false, lt->local_iface_addr());
 
                 else
                     omnet_chg_rte(nb_tuple->nb_main_addr(),
                                    lt->nb_iface_addr(),
                                    netmask,// Default mask
-                                   1, false, lt->local_iface_index(),
-                                   IPv4Route::dOLSR);
+                                   1, false, lt->local_iface_index());
             }
         }
     }
@@ -1390,23 +1384,37 @@ OLSR::rtable_computation()
         {
             OLSR_rt_entry* entry = rtable_.lookup(nb2hop_tuple->nb_main_addr());
             assert(entry != NULL);
-            rtable_.add_entry(nb2hop_tuple->nb2hop_addr(),
-                              entry->next_addr(),
-                              entry->iface_addr(),
-                              2, entry->local_iface_index());
-            if (!useIndex)
-                omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
-                               entry->next_addr(),
-                               netmask,
-                               2, false, entry->iface_addr(),
-                               IPv4Route::dOLSR);
 
-            else
-                omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
-                               entry->next_addr(),
-                               netmask,
-                               2, false, entry->local_iface_index(),
-                               IPv4Route::dOLSR);
+            // check if the entry is already in the routing table and the new is a better alternative
+            bool insert = true;
+            OLSR_rt_entry* entry2hop = rtable_.lookup(nb2hop_tuple->nb2hop_addr());
+            if (entry2hop)
+            {
+                // check if the node is a better alternative
+                OLSR_nb_tuple* nb_tupleNew = state_.find_sym_nb_tuple(nb2hop_tuple->nb_main_addr());
+                OLSR_nb_tuple* nb_tupleOld = state_.find_sym_nb_tuple(entry2hop->next_addr());
+
+                if (nb_tupleOld != NULL && nb_tupleOld->willingness() > nb_tupleNew->willingness())
+                    insert = false;
+            }
+
+            if (insert)
+            {
+                rtable_.add_entry(nb2hop_tuple->nb2hop_addr(),
+                        entry->next_addr(),
+                        entry->iface_addr(),
+                        2, entry->local_iface_index());
+                if (!useIndex)
+                    omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
+                            entry->next_addr(),
+                            netmask,
+                            2, false, entry->iface_addr());
+                else
+                    omnet_chg_rte(nb2hop_tuple->nb2hop_addr(),
+                            entry->next_addr(),
+                            netmask,
+                            2, false, entry->local_iface_index());
+            }
 
         }
     }
@@ -1439,15 +1447,13 @@ OLSR::rtable_computation()
                     omnet_chg_rte(topology_tuple->dest_addr(),
                                    entry2->next_addr(),
                                    netmask,
-                                   h+1, false, entry2->iface_addr(),
-                                   IPv4Route::dOLSR);
+                                   h+1, false, entry2->iface_addr());
 
                 else
                     omnet_chg_rte(topology_tuple->dest_addr(),
                                    entry2->next_addr(),
                                    netmask,
-                                   h+1, false, entry2->local_iface_index(),
-                                   IPv4Route::dOLSR);
+                                   h+1, false, entry2->local_iface_index());
 
                 added = true;
             }
@@ -1477,15 +1483,13 @@ OLSR::rtable_computation()
                     omnet_chg_rte(tuple->iface_addr(),
                                    entry1->next_addr(),
                                    netmask,
-                                   entry1->dist(), false, entry1->iface_addr(),
-                                   IPv4Route::dOLSR);
+                                   entry1->dist(), false, entry1->iface_addr());
 
                 else
                     omnet_chg_rte(tuple->iface_addr(),
                                    entry1->next_addr(),
                                    netmask,
-                                   entry1->dist(), false, entry1->local_iface_index(),
-                                   IPv4Route::dOLSR);
+                                   entry1->dist(), false, entry1->local_iface_index());
                 added = true;
             }
         }
@@ -1861,7 +1865,7 @@ OLSR::send_hello()
     msg.msg_seq_num() = msg_seq();
 
     msg.hello().reserved() = 0;
-    msg.hello().htime() = OLSR::seconds_to_emf(SIMTIME_DBL(hello_ival()));
+    msg.hello().htime() = OLSR::seconds_to_emf(hello_ival());
     msg.hello().willingness() = willingness();
     msg.hello().count = 0;
 
@@ -2284,7 +2288,7 @@ OLSR::mac_failed(IPv4Datagram* p)
             nb_loss(link_tuple);
         }
     }
-    deleteIpEntry(dest_addr, IPv4Route::dOLSR);
+    deleteIpEntry(dest_addr);
 }
 
 ///
@@ -2293,7 +2297,7 @@ OLSR::mac_failed(IPv4Datagram* p)
 void
 OLSR::set_hello_timer()
 {
-    hello_timer_.resched((double)(SIMTIME_DBL(hello_ival()) - JITTER));
+    hello_timer_.resched(hello_ival() - JITTER);
 }
 
 ///
@@ -2302,7 +2306,7 @@ OLSR::set_hello_timer()
 void
 OLSR::set_tc_timer()
 {
-    tc_timer_.resched((double)(SIMTIME_DBL(tc_ival()) - JITTER));
+    tc_timer_.resched(tc_ival() - JITTER);
 }
 
 ///
@@ -2311,7 +2315,7 @@ OLSR::set_tc_timer()
 void
 OLSR::set_mid_timer()
 {
-    mid_timer_.resched((double)(SIMTIME_DBL(mid_ival()) - JITTER));
+    mid_timer_.resched(mid_ival() - JITTER);
 }
 
 ///
@@ -3209,4 +3213,58 @@ OLSR::isNodeCandidate(const nsaddr_t &src_addr)
     if (mprsel_tuple != NULL)
         return true;
     return false;
+}
+
+bool OLSR::handleNodeStart(IDoneCallback *doneCallback)
+{
+    hello_timer_.resched(hello_ival());
+    tc_timer_.resched(hello_ival());
+    mid_timer_.resched(hello_ival());
+    scheduleNextEvent();
+    return true;
+}
+
+bool OLSR::handleNodeShutdown(IDoneCallback *doneCallback)
+{
+
+    rtable_.clear();
+    msgs_.clear();
+    if (timerMessage)
+         cancelEvent(timerMessage);
+
+    while (timerQueuePtr && timerQueuePtr->size()>0)
+    {
+        OLSR_Timer * timer = timerQueuePtr->begin()->second;
+        timerQueuePtr->erase(timerQueuePtr->begin());
+        if (helloTimer==timer)
+            continue;
+        else if (tcTimer==timer)
+            continue;
+        else if (midTimer==timer)
+            continue;
+        delete timer;
+    }
+
+    return true;
+}
+
+void OLSR::handleNodeCrash()
+{
+    rtable_.clear();
+    msgs_.clear();
+    if (timerMessage)
+         cancelEvent(timerMessage);
+
+    while (timerQueuePtr && timerQueuePtr->size()>0)
+    {
+        OLSR_Timer * timer = timerQueuePtr->begin()->second;
+        timerQueuePtr->erase(timerQueuePtr->begin());
+        if (helloTimer==timer)
+            continue;
+        else if (tcTimer==timer)
+            continue;
+        else if (midTimer==timer)
+            continue;
+        delete timer;
+    }
 }
