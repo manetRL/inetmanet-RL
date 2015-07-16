@@ -63,6 +63,7 @@ std::string IPv4Route::info() const
     out << "gw:"; if (gateway.isUnspecified()) out << "*  "; else out << gateway << "  ";
     out << "mask:"; if (netmask.isUnspecified()) out << "*  "; else out << netmask << "  ";
     out << "metric:" << metric << " ";
+    out << "AD:" << adminDist << " ";
     out << "if:"; if (!interfacePtr) out << "*"; else out << interfacePtr->getName();
     if (interfacePtr && interfacePtr->ipv4Data())
         out << "(" << interfacePtr->ipv4Data()->getIPAddress() << ")";

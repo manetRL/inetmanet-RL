@@ -322,6 +322,12 @@ unsigned char BGPRouting::decisionProcess(const BGPUpdateMessage& msg, BGP::Rout
         else
         {
             entry->setInterface(_BGPSessions[sessionIndex]->getLinkIntf());
+
+            if (_BGPSessions[sessionIndex]->getType() == BGP::EGP )
+                entry->setAdminDist(IPv4Route::dBGPExternal);
+            else
+                entry->setAdminDist(IPv4Route::dBGPInternal);
+
             _BGPRoutingTable.push_back(entry);
             _rt->addRoute(entry);
             return BGP::ROUTE_DESTINATION_CHANGED;
@@ -344,6 +350,7 @@ unsigned char BGPRouting::decisionProcess(const BGPUpdateMessage& msg, BGP::Rout
             newEntry->setGateway(_rt->getRoute(indexIP)->getGateway());
             newEntry->setInterface(_rt->getRoute(indexIP)->getInterface());
             newEntry->setSourceType(IPv4Route::BGP);
+            newEntry->setAdminDist(IPv4Route::dBGPInternal);
             _rt->deleteRoute(_rt->getRoute(indexIP));
             _rt->addRoute(newEntry);
         }
@@ -356,6 +363,7 @@ unsigned char BGPRouting::decisionProcess(const BGPUpdateMessage& msg, BGP::Rout
     {
         std::string entryh = entry->getDestination().str();
         std::string entryn = entry->getNetmask().str();
+        entry->setAdminDist(IPv4Route::dBGPExternal);
         _rt->addRoute(entry);
         //insertExternalRoute on OSPF ExternalRoutingTable if OSPF exist on this BGP router
         if (ospfExist(_rt))

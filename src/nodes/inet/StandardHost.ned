@@ -25,8 +25,6 @@ import inet.applications.IUDPApp;
 import inet.transport.ISCTP;
 import inet.transport.ITCP;
 import inet.transport.IUDP;
-
-
 //
 // IPv4 host with SCTP, TCP, UDP layers and applications.
 // IP forwarding is disabled by default (see IPForward).
@@ -89,6 +87,11 @@ module StandardHost extends NodeBase
                 @display("p=635,141,row,60");
         }
     connections allowunconnected:
+        for i=0..numUdpApps-1 {
+            udpApp[i].udpOut --> udp.appIn++;
+            udpApp[i].udpIn <-- udp.appOut++;
+        }
+
         for i=0..numTcpApps-1 {
             tcpApp[i].tcpOut --> tcp.appIn++;
             tcpApp[i].tcpIn <-- tcp.appOut++;
@@ -96,11 +99,6 @@ module StandardHost extends NodeBase
 
         tcp.ipOut --> networkLayer.transportIn++ if hasTcp;
         tcp.ipIn <-- networkLayer.transportOut++ if hasTcp;
-
-        for i=0..numUdpApps-1 {
-            udpApp[i].udpOut --> udp.appIn++;
-            udpApp[i].udpIn <-- udp.appOut++;
-        }
 
         udp.ipOut --> networkLayer.transportIn++ if hasUdp;
         udp.ipIn <-- networkLayer.transportOut++ if hasUdp;

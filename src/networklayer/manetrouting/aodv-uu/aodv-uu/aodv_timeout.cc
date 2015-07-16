@@ -176,7 +176,7 @@ void NS_CLASS local_repair_timeout(void *arg)
     /* if delete is true fiels next, hops and mask are nor used */
     struct in_addr nm;
     nm.s_addr = ManetAddress(IPv4Address::ALLONES_ADDRESS);
-    omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, rt->hcnt,true);
+    omnet_chg_rte(rt->dest_addr, rt->dest_addr, nm, rt->hcnt,true, IPv4Route::dAODV);
 #endif
 #endif
     /* Route should already be invalidated. */

@@ -63,12 +63,12 @@ void Batman::add_del_route(const ManetAddress &dest, uint8_t netmask, const Mane
     ManetAddress nmask(IPv4Address::makeNetmask(netmask));
     if (route_action==ROUTE_DEL)
     {
-       setRoute(dest, ManetAddress::ZERO, index, 0, nmask);
+       setRoute(dest, ManetAddress::ZERO, index, 0, nmask, IPv4Route::dBATMAN);
        return;
     }
 
     // if (route_action==ROUTE_ADD)
-    setRoute(dest, router, index, -1, nmask);
+    setRoute(dest, router, index, -1, nmask, IPv4Route::dBATMAN);
 }
 
 int Batman::add_del_interface_rules(int8_t rule_action)
