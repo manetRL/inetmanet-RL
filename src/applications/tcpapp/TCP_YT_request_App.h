@@ -17,7 +17,7 @@
 #include "INETDefs.h"
 
 
-#include "TCPAppBase.h"
+#include "TCPAppBase_forYT.h"
 #include "NodeStatus.h"
 #include "ILifecycle.h"
 #include "YTRequestMsg_m.h"
@@ -26,7 +26,7 @@
 /**
  * An example request-reply based client application.
  */
-class INET_API TCP_YT_request_App : public TCPAppBase, public ILifecycle
+class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
 {
   protected:
     cMessage *timeoutMsg;
@@ -68,6 +68,8 @@ class INET_API TCP_YT_request_App : public TCPAppBase, public ILifecycle
 
   protected:
     virtual int numInitStages() const { return 4; }
+
+    virtual void startDNS(cMessage *msg);
 
     /** Redefined . */
     virtual void initialize(int stage);

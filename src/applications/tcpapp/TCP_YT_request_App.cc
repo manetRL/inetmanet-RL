@@ -25,7 +25,7 @@
 
 #define MSGKIND_CONNECT  0
 #define MSGKIND_SEND     1
-
+#define MSGKIND_DNS      100
 
 Define_Module(TCP_YT_request_App);
 
@@ -43,7 +43,7 @@ TCP_YT_request_App::~TCP_YT_request_App()
 
 void TCP_YT_request_App::initialize(int stage)
 {
-    TCPAppBase::initialize(stage);
+    TCPAppBase_forYT::initialize(stage);
     if (stage == 0)
     {
         numRequestsToSend = 0;
@@ -62,7 +62,7 @@ void TCP_YT_request_App::initialize(int stage)
         nodeStatus = dynamic_cast<NodeStatus *>(findContainingNode(this)->getSubmodule("status"));
 
         if (isNodeUp()) {
-            timeoutMsg->setKind(MSGKIND_CONNECT);
+            timeoutMsg->setKind(MSGKIND_DNS);
             scheduleAt(startTime, timeoutMsg);
         }
     }
@@ -130,6 +130,12 @@ void TCP_YT_request_App::sendRequest()
      sendPacket(msg);
 }
 
+void TCP_YT_request_App::startDNS(cMessage *msg)
+{
+
+}
+
+
 void TCP_YT_request_App::handleTimer(cMessage *msg)
 {
     switch (msg->getKind())
@@ -159,7 +165,7 @@ void TCP_YT_request_App::handleTimer(cMessage *msg)
 
 void TCP_YT_request_App::socketEstablished(int connId, void *ptr)
 {
-    TCPAppBase::socketEstablished(connId, ptr);
+    TCPAppBase_forYT::socketEstablished(connId, ptr);
 
     // determine number of requests in this session
     numRequestsToSend = (long) par("numRequestsPerSession");
@@ -191,7 +197,7 @@ void TCP_YT_request_App::rescheduleOrDeleteTimer(simtime_t d, short int msgKind)
 
 void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, bool urgent)
 {
-    TCPAppBase::socketDataArrived(connId, ptr, msg, urgent);
+    TCPAppBase_forYT::socketDataArrived(connId, ptr, msg, urgent);
 
 //    if (numRequestsToSend > 0)
 //    {
@@ -222,7 +228,7 @@ void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, 
 
 void TCP_YT_request_App::socketClosed(int connId, void *ptr)
 {
-    TCPAppBase::socketClosed(connId, ptr);
+    TCPAppBase_forYT::socketClosed(connId, ptr);
 
     // start another session after a delay
     if (timeoutMsg)
@@ -234,7 +240,7 @@ void TCP_YT_request_App::socketClosed(int connId, void *ptr)
 
 void TCP_YT_request_App::socketFailure(int connId, void *ptr, int code)
 {
-    TCPAppBase::socketFailure(connId, ptr, code);
+    TCPAppBase_forYT::socketFailure(connId, ptr, code);
 
     // reconnect after a delay
     if (timeoutMsg)
