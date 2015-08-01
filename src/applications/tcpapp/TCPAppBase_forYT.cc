@@ -57,9 +57,7 @@ void TCPAppBase_forYT::handleMessage(cMessage *msg)
     if (msg->isSelfMessage() && msg->getKind() == 100)
         //Devo fare partire la richiesta DNS e poi i vari redirect fino al frontend server, quando avrò fatto tutto potrò generare un altro self-message per fargli fare
         //la parte in handleTimer->msgKind 0
-
-        // TODO: devo verificare se l'indirizzo è in tabella DNS altrimenti faccio partire
-        startDNS(msg);
+        startDNS();
     else if (msg->isSelfMessage())
         handleTimer(msg);
     else

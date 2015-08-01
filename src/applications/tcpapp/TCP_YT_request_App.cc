@@ -22,6 +22,7 @@
 #include "ModuleAccess.h"
 #include "GenericAppMsg_m.h"
 #include "YTRequestMsg_m.h"
+#include "DNSRequest_m.h"
 
 #define MSGKIND_CONNECT  0
 #define MSGKIND_SEND     1
@@ -130,8 +131,12 @@ void TCP_YT_request_App::sendRequest()
      sendPacket(msg);
 }
 
-void TCP_YT_request_App::startDNS(cMessage *msg)
+void TCP_YT_request_App::startDNS()
 {
+    // TODO: devo verificare se l'indirizzo è in tabella DNS altrimenti faccio partire la richiesta DNS
+    DNSRequest *dns = new DNSRequest("DNS_Request");
+
+
 
 }
 

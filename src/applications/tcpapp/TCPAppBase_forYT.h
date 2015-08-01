@@ -61,6 +61,8 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
      */
     virtual void finish();
 
+    virtual void startDNS() = 0;
+
     /** @name Utility functions */
     //@{
     /** Issues an active OPEN to the address/port given as module parameters */

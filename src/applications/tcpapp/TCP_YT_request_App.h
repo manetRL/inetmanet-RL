@@ -69,7 +69,7 @@ class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
   protected:
     virtual int numInitStages() const { return 4; }
 
-    virtual void startDNS(cMessage *msg);
+    virtual void startDNS();
 
     /** Redefined . */
     virtual void initialize(int stage);
