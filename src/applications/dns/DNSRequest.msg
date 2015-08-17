@@ -13,6 +13,13 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 //
 
-message DNSRequest {
+cplusplus {{
+#include "INETDefs.h"
+}}
+
+
+packet DNSRequest
+{
     string url;
+    int idAppModule;
 }

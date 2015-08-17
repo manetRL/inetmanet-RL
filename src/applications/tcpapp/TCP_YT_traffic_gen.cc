@@ -191,27 +191,14 @@ void TCP_YT_traffic_gen::handleMessage(cMessage *msg)
         d->bytesLeft = d->videoSize;
         d->numPkSent = 0;
         ASSERT(d->videoSize > 0);
-//        if(videoBitrate < 200)
-//            videoBitrate = 200;
         d->vidBitrt = videoBitrate;
         d->durata = dur;
 
         TCPCommand *ind = check_and_cast<TCPCommand *>(pkt->removeControlInfo());
-//        TCPSendCommand *cmd = new TCPSendCommand();
-//        cmd->setConnId(ind->getConnId());
-//
-//        d->cmd = cmd;
-
         d->cmd = new TCPSendCommand();
         d->cmd->setConnId(ind->getConnId());
 
-//        d->cmd->setConnId(ind->getConnId());
-
-
-        //pkt->setKind(TCP_C_SEND);
-       // pkt->setControlInfo(cmd);     //ANDRà MESSA QUANDO CREO IL PACCHETTO DA INVIARE (UTILE SE LO METTO NELLA STRUTTURA VIDEOSTREAMDATA)
         delete ind;
-
         delete msg;
 
         numStreams++;
@@ -220,33 +207,6 @@ void TCP_YT_traffic_gen::handleMessage(cMessage *msg)
         firstPacket = 1;
         // ... then transmit first packet right away
         sendStreamData(timer);
-//
-//
-//            long byteLen = pkt->getByteLength() * echoFactor;
-//
-//            if (byteLen < 1)
-//                byteLen = 1;
-//
-//            pkt->setByteLength(byteLen);
-//
-//            ByteArrayMessage *baMsg = dynamic_cast<ByteArrayMessage *>(pkt);
-//
-//            // if (dataTransferMode == TCP_TRANSFER_BYTESTREAM)
-//            if (baMsg)
-//            {
-//                ByteArray& outdata = baMsg->getByteArray();
-//                ByteArray indata = outdata;
-//                outdata.setDataArraySize(byteLen);
-//
-//                for (long i = 0; i < byteLen; i++)
-//                    outdata.setData(i, indata.getData(i / echoFactor));
-//            }
-
-//            if (delay == 0)
-//                sendDown(pkt);
-//            else
-//                scheduleAt(simTime() + delay, pkt); // send after a delay
-//        }
     }
     else
     {
@@ -279,6 +239,8 @@ void TCP_YT_traffic_gen::sendStreamData(cMessage *timer)
         *attach = *d->cmd;
         pkt->setControlInfo(attach);
         long byteLen = (d->vidBitrt*40*1000)/8;
+        if (byteLen > d->videoSize)
+            byteLen=d->videoSize;
         pkt->setByteLength(byteLen);
         pkt->setMetaTag_bitrate(d->vidBitrt);
         pkt->setMetaTag_durata(d->durata);

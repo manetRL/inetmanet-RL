@@ -23,6 +23,7 @@
 #include "YTRequestMsg_m.h"
 
 
+
 /**
  * An example request-reply based client application.
  */
@@ -67,9 +68,9 @@ class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
 
 
   protected:
-    virtual int numInitStages() const { return 4; }
-
     virtual void startDNS();
+
+    virtual int numInitStages() const { return 4; }
 
     /** Redefined . */
     virtual void initialize(int stage);

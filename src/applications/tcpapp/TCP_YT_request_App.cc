@@ -23,14 +23,16 @@
 #include "GenericAppMsg_m.h"
 #include "YTRequestMsg_m.h"
 #include "DNSRequest_m.h"
+#include "IPvXAddressResolver.h"
+#include "IPv4ControlInfo.h"
+
+
 
 #define MSGKIND_CONNECT  0
 #define MSGKIND_SEND     1
 #define MSGKIND_DNS      100
 
 Define_Module(TCP_YT_request_App);
-
-
 
 TCP_YT_request_App::TCP_YT_request_App()
 {
@@ -104,6 +106,30 @@ bool TCP_YT_request_App::handleOperationStage(LifecycleOperation *operation, int
     return true;
 }
 
+void TCP_YT_request_App::startDNS()
+{
+    cMessage *msg = new cMessage("startDNS");
+    msg->setKind(MSGKIND_DNS);
+    msg->addPar("locAdd") = par("localAddress").stringValue();
+    msg->addPar("id_appModule") = this->getId();
+    cModule *dest = this->gate("tcpOut")->getNextGate()->getOwnerModule()->gate("ipOut")->getNextGate()->getOwnerModule();
+    cModule *owner = NULL;
+
+    int size = dest->gate("transportOut", 0)->getVectorSize();
+
+        for (int i=0; i<size; i++)
+        {
+            owner = dest->gate("transportOut", i)->getNextGate()->getOwnerModule();
+            if(strcmp(owner->getClassName(), "DNS") == 0)
+            {
+                break;
+            }
+        }
+
+    sendDirect(msg,owner,"fromApp");
+
+}
+
 void TCP_YT_request_App::sendRequest()
 {
      EV << "sending request, " << numRequestsToSend-1 << " more to go\n";
@@ -114,11 +140,8 @@ void TCP_YT_request_App::sendRequest()
      const char *btr = par("itag");
      videoBitrate bitrate = convertStringToBitrate(btr);
      int dur = par("dur");
-//     long replyLength = par("replyLength");
      if (requestLength < 1)
          requestLength = 1;
-//     if (replyLength < 1)
-//         replyLength = 1;
      videoSize = (dur*bitrate*1024)/8;
 
      EV << "sending " << requestLength << " bytes " << endl;
@@ -130,16 +153,6 @@ void TCP_YT_request_App::sendRequest()
 
      sendPacket(msg);
 }
-
-void TCP_YT_request_App::startDNS()
-{
-    // TODO: devo verificare se l'indirizzo è in tabella DNS altrimenti faccio partire la richiesta DNS
-    DNSRequest *dns = new DNSRequest("DNS_Request");
-
-
-
-}
-
 
 void TCP_YT_request_App::handleTimer(cMessage *msg)
 {
@@ -176,6 +189,7 @@ void TCP_YT_request_App::socketEstablished(int connId, void *ptr)
     numRequestsToSend = (long) par("numRequestsPerSession");
     if (numRequestsToSend < 1)
         numRequestsToSend = 1;
+    bytesRcvd_inSession = 0;
 
     // perform first request if not already done (next one will be sent when reply arrives)
     if (!earlySend)
@@ -203,19 +217,10 @@ void TCP_YT_request_App::rescheduleOrDeleteTimer(simtime_t d, short int msgKind)
 void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, bool urgent)
 {
     TCPAppBase_forYT::socketDataArrived(connId, ptr, msg, urgent);
+    bytesRcvd_inSession = bytesRcvd%videoSize;//mod(VIDEOSIZE)      DA MODIFICARE IMMEDIATAMENTE
 
-//    if (numRequestsToSend > 0)
-//    {
-//        bytesRcvdd += msg->getByteLength();
-        if (bytesRcvd >= videoSize )
-        {
-            if (socket.getState() != TCPSocket::LOCALLY_CLOSED)
-                {
-                    EV << "reply to last request arrived, closing session\n";
-                    close();
-                }
-        }
-
+    if (numRequestsToSend > 0)
+    {
         EV << "reply arrived\n";
 
         if (timeoutMsg)
@@ -223,12 +228,12 @@ void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, 
             simtime_t d = simTime() + (simtime_t) par("thinkTime");
             rescheduleOrDeleteTimer(d, MSGKIND_SEND);
         }
-//    }
-//    if (socket.getState() != TCPSocket::LOCALLY_CLOSED)
-//    {
-//        EV << "reply to last request arrived, closing session\n";
-//        close();
-//    }
+    }
+    else if (socket.getState() != TCPSocket::LOCALLY_CLOSED && bytesRcvd_inSession == 0)
+    {
+        EV << "reply to last request arrived, closing session\n";
+        close();
+    }
 }
 
 void TCP_YT_request_App::socketClosed(int connId, void *ptr)
@@ -239,7 +244,7 @@ void TCP_YT_request_App::socketClosed(int connId, void *ptr)
     if (timeoutMsg)
     {
         simtime_t d = simTime() + (simtime_t) par("idleInterval");
-        rescheduleOrDeleteTimer(d, MSGKIND_CONNECT);
+        rescheduleOrDeleteTimer(d, MSGKIND_DNS);
     }
 }
 

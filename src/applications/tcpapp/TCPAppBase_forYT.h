@@ -17,6 +17,7 @@
 #include "INETDefs.h"
 #include "TCPSocket.h"
 
+
 /**
  * Base class for clients app for TCP-based request-reply protocols or apps.
  * Handles a single session (and TCP connection) at a time.
@@ -35,6 +36,7 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     int packetsRcvd;
     int bytesSent;
     int bytesRcvd;
+    int bytesRcvd_inSession;
 
     //statistics:
     static simsignal_t connectSignal;
@@ -42,6 +44,8 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     static simsignal_t sentPkSignal;
 
   protected:
+
+    virtual void startDNS()=0;
     /**
      * Initialization. Should be redefined to perform or schedule a connect().
      */
@@ -60,8 +64,6 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
      * at the end of the simulation.
      */
     virtual void finish();
-
-    virtual void startDNS() = 0;
 
     /** @name Utility functions */
     //@{

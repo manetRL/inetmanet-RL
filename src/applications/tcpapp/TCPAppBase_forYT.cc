@@ -11,8 +11,9 @@
 // See the GNU Lesser General Public License for more details.
 //
 
-
+#include <string.h>
 #include "TCPAppBase_forYT.h"
+#include "DNS.h"
 
 #include "IPvXAddressResolver.h"
 
@@ -55,13 +56,23 @@ void TCPAppBase_forYT::initialize(int stage)
 void TCPAppBase_forYT::handleMessage(cMessage *msg)
 {
     if (msg->isSelfMessage() && msg->getKind() == 100)
-        //Devo fare partire la richiesta DNS e poi i vari redirect fino al frontend server, quando avrò fatto tutto potrò generare un altro self-message per fargli fare
-        //la parte in handleTimer->msgKind 0
-        startDNS();
-    else if (msg->isSelfMessage())
+    {
+        cModule *dnsModule = getParentModule()->getSubmodule("DNS");
+        DNS *dns = check_and_cast<DNS *>(dnsModule);
+
+        if (!dns->findAddress("youtube.com"))
+            startDNS();
+        else
+        {
+            msg->setKind(0);
+            handleTimer(msg);
+        }
+    }
+    else if (msg->isSelfMessage() || msg->getKind() == 0)
         handleTimer(msg);
     else
         socket.processMessage(msg);
+
 }
 
 void TCPAppBase_forYT::connect()
