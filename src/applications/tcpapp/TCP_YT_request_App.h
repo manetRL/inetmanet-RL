@@ -21,6 +21,8 @@
 #include "NodeStatus.h"
 #include "ILifecycle.h"
 #include "YTRequestMsg_m.h"
+#include "IPvXAddressResolver.h"
+
 
 
 
@@ -68,7 +70,9 @@ class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
 
 
   protected:
-    virtual void startDNS();
+    virtual void requestPage(cMessage *msg);
+
+    virtual void startDNS(cMessage *msg);
 
     virtual int numInitStages() const { return 4; }
 

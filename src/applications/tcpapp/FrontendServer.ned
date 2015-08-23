@@ -13,17 +13,13 @@
 // along with this program.  If not, see http://www.gnu.org/licenses/.
 // 
 
-package inet.applications.dns;
+package inet.applications.tcpapp;
 
-//
-// TODO auto-generated type
-//
-simple DNS
+
+simple FrontendServer
 {
     parameters:
-        string DNS_Address = default(""); // Indirizzo del server DNS
-        xml config_address = default(xml("<config><DNS_address URL='**' address='0.0.0.0' /></config>")); // Configurazione tra URL e relativo indirizzo IP
-        bool disable_response =default(true); //disabilita il funzionamento da server. Permette unicamente di mandare e ricevere richieste DNS ma non di rispondere a tali richieste
+        int replyLength @unit(B) = default(200B);  //PER ORA E CONSENTITA SOLO QUESTA DIMENSIONE. VEDERE SE MODIFICARE
         
     gates:
         input ipIn;

@@ -14,7 +14,7 @@ class DNS : public cSimpleModule
     public:
     DNS() {}
     virtual ~DNS() {}
-    bool findAddress(const char *url);
+    std::string findAddress(const char *url);
 
     //Attributi
     public:
@@ -32,10 +32,15 @@ class DNS : public cSimpleModule
     //Metodi
     protected:
     virtual void initialize(int stage);
+
     virtual int numInitStages() const { return 4; }
+
     virtual void handleMessage(cMessage *msg);
+
     virtual void startRequestDNS(cMessage *msg);
+
     virtual void sendDNSReply(cMessage *msg);
+
     virtual void processDNSReply(cMessage *msg);
 
 

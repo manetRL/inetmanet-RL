@@ -129,6 +129,16 @@ int IPv4Serializer::serialize(const IPv4Datagram *dgram, unsigned char *buf, uns
         break;
 #endif
 
+      case IP_PROT_DNS:
+          packetLength += 200;
+
+          break;
+
+      case IP_PROT_FRONTEND:
+          packetLength += 200;
+
+          break;
+
       default:
         throw cRuntimeError(dgram, "IPv4Serializer: cannot serialize protocol %d", dgram->getTransportProtocol());
     }

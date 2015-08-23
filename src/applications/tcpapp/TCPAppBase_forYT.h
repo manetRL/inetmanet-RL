@@ -14,9 +14,12 @@
 #ifndef __INET_TCPAPPBASE_FORYT_H
 #define __INET_TCPAPPBASE_FORYT_H
 
+#include <string.h>
+
 #include "INETDefs.h"
 #include "TCPSocket.h"
 
+using namespace std;
 
 /**
  * Base class for clients app for TCP-based request-reply protocols or apps.
@@ -44,8 +47,9 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     static simsignal_t sentPkSignal;
 
   protected:
+    virtual void requestPage(cMessage *msg)=0;
 
-    virtual void startDNS()=0;
+    virtual void startDNS(cMessage *msg)=0;
     /**
      * Initialization. Should be redefined to perform or schedule a connect().
      */
@@ -68,7 +72,7 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     /** @name Utility functions */
     //@{
     /** Issues an active OPEN to the address/port given as module parameters */
-    virtual void connect();
+    virtual void connect(const char *connectAdd);
 
     /** Issues CLOSE command */
     virtual void close();

@@ -15,7 +15,6 @@
 // along with this program; if not, see <http://www.gnu.org/licenses/>.
 //
 
-
 #include "TCP_YT_request_App.h"
 
 #include "NodeOperations.h"
@@ -23,16 +22,20 @@
 #include "GenericAppMsg_m.h"
 #include "YTRequestMsg_m.h"
 #include "DNSRequest_m.h"
-#include "IPvXAddressResolver.h"
 #include "IPv4ControlInfo.h"
-
+#include "FrontendServer.h"
+#include "DNSReply_m.h"
+#include "DNS.h"
 
 
 #define MSGKIND_CONNECT  0
 #define MSGKIND_SEND     1
+#define MSGKIND_FRONTEND 50
 #define MSGKIND_DNS      100
 
 Define_Module(TCP_YT_request_App);
+
+using namespace std;
 
 TCP_YT_request_App::TCP_YT_request_App()
 {
@@ -66,6 +69,7 @@ void TCP_YT_request_App::initialize(int stage)
 
         if (isNodeUp()) {
             timeoutMsg->setKind(MSGKIND_DNS);
+            timeoutMsg->addPar("address") = "youtube.com";
             scheduleAt(startTime, timeoutMsg);
         }
     }
@@ -106,27 +110,47 @@ bool TCP_YT_request_App::handleOperationStage(LifecycleOperation *operation, int
     return true;
 }
 
-void TCP_YT_request_App::startDNS()
+void TCP_YT_request_App::startDNS(cMessage *msg)
 {
-    cMessage *msg = new cMessage("startDNS");
-    msg->setKind(MSGKIND_DNS);
-    msg->addPar("locAdd") = par("localAddress").stringValue();
-    msg->addPar("id_appModule") = this->getId();
-    cModule *dest = this->gate("tcpOut")->getNextGate()->getOwnerModule()->gate("ipOut")->getNextGate()->getOwnerModule();
-    cModule *owner = NULL;
+    cMessage *startDNS = new cMessage("startDNS");
+    startDNS->setKind(MSGKIND_DNS);
+    startDNS->addPar("locAdd") = par("localAddress").stringValue();
+    startDNS->addPar("address") = msg->par("address");
 
-    int size = dest->gate("transportOut", 0)->getVectorSize();
+    cModule *dnsModule = getParentModule()->getSubmodule("DNS");
+    DNS *dns = check_and_cast<DNS *>(dnsModule);
 
-        for (int i=0; i<size; i++)
-        {
-            owner = dest->gate("transportOut", i)->getNextGate()->getOwnerModule();
-            if(strcmp(owner->getClassName(), "DNS") == 0)
-            {
-                break;
-            }
-        }
+    if (!msg->isSelfMessage())
+        delete(msg);
 
-    sendDirect(msg,owner,"fromApp");
+    sendDirect(startDNS,dns,"fromApp");
+
+}
+
+void TCP_YT_request_App::requestPage(cMessage *msg)
+{
+    const char *destAddress = msg->par("resolvedAddress");
+
+    cMessage *tofrontendApp = new cMessage("RequestPage");
+    tofrontendApp->setKind(MSGKIND_FRONTEND);
+    tofrontendApp->addPar("locAdd") = par("localAddress").stringValue();
+    tofrontendApp->addPar("destinationAddress") = destAddress;
+
+    cPar param = this->par("videoServerAddress");                                               //
+    if (!param.isExpression())                                                                  //
+        tofrontendApp->addPar("videoServer") = par("videoServerAddress").stringValue();         // WORKAROUND per aggirare problema della lettura dell'indirizzo assegnato da scenarioManager
+    else                                                                                        //
+        tofrontendApp->addPar("videoServer") = par("videoServerAddress").str().c_str();         //
+
+    cModule *frontendServerModule = getParentModule()->getSubmodule("FrontendApp");
+    FrontendServer *frontendServer = check_and_cast<FrontendServer *>(frontendServerModule);
+
+//    delete(msg);
+
+    if (!msg->isSelfMessage())
+        delete(msg);
+
+    sendDirect(tofrontendApp,frontendServer,"fromApp");
 
 }
 
@@ -159,15 +183,19 @@ void TCP_YT_request_App::handleTimer(cMessage *msg)
     switch (msg->getKind())
     {
         case MSGKIND_CONNECT:
+        {
             EV << "starting session\n";
-            connect(); // active OPEN
+            const char *connectAddress = msg->par("resolvedAddress");
+            connect(connectAddress); // active OPEN
 
             // significance of earlySend: if true, data will be sent already
             // in the ACK of SYN, otherwise only in a separate packet (but still
             // immediately)
+            delete(msg);
             if (earlySend)
                 sendRequest();
             break;
+        }
 
         case MSGKIND_SEND:
            sendRequest();
@@ -175,6 +203,12 @@ void TCP_YT_request_App::handleTimer(cMessage *msg)
            // no scheduleAt(): next request will be sent when reply to this one
            // arrives (see socketDataArrived())
            break;
+
+        case MSGKIND_FRONTEND:
+        {
+            requestPage(msg);
+            break;
+        }
 
         default:
             throw cRuntimeError("Invalid timer msg: kind=%d", msg->getKind());

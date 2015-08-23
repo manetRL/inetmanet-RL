@@ -29,5 +29,4 @@ packet DNSReply
 {
     string URL;
     IPvXAddress dest_adress;
-    int idAppModule;
 }

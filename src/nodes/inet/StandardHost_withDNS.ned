@@ -28,6 +28,7 @@ import inet.transport.IUDP;
 import inet.nodes.inet.NodeBase;
 import inet.nodes.inet.NetworkLayer;
 import inet.applications.dns.DNS;
+import inet.applications.tcpapp.FrontendServer;
 //
 // IPv4 host with SCTP, TCP, UDP layers and applications.
 // IP forwarding is disabled by default (see IPForward).
@@ -57,6 +58,7 @@ module StandardHost_withDNS extends NodeBase
         bool hasUdp = default(numUdpApps>0);
         bool hasSctp = default(numSctpApps>0);
         bool hasDNS = default(true);
+        bool hasFrontendServer = default(false);
         string tcpType = default(firstAvailable("TCP", "TCP_lwIP", "TCP_NSC", "TCP_None"));  // tcp implementation (e.g. ~TCP, ~TCP_lwIP, ~TCP_NSC) or ~TCPSpoof
         string udpType = default(firstAvailable("UDP","UDP_None"));
         string sctpType = default(firstAvailable("SCTP","SCTP_None"));
@@ -90,8 +92,11 @@ module StandardHost_withDNS extends NodeBase
             parameters:
                 @display("p=635,141,row,60");
         }
-        DNS: DNS {
+        DNS: DNS if hasDNS {
             @display("p=147,225");
+        }
+        FrontendApp: FrontendServer if hasFrontendServer {
+            @display("p=513,287");
         }
     connections allowunconnected:
         for i=0..numUdpApps-1 {
@@ -106,9 +111,12 @@ module StandardHost_withDNS extends NodeBase
 
         tcp.ipOut --> networkLayer.transportIn++ if hasTcp;
         tcp.ipIn <-- networkLayer.transportOut++ if hasTcp;
-        
+
         DNS.ipOut --> networkLayer.transportIn++ if hasDNS;
         DNS.ipIn <-- networkLayer.transportOut++ if hasDNS;
+
+        FrontendApp.ipOut --> networkLayer.transportIn++ if hasFrontendServer;
+        FrontendApp.ipIn <-- networkLayer.transportOut++ if hasFrontendServer;
 
         udp.ipOut --> networkLayer.transportIn++ if hasUdp;
         udp.ipIn <-- networkLayer.transportOut++ if hasUdp;

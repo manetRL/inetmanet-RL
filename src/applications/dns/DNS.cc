@@ -24,6 +24,9 @@
 #include "IPSocket.h"
 #include "IPv4ControlInfo.h"
 #include "IPvXAddressResolver.h"
+#include "TCP_YT_request_App.h"
+
+using namespace std;
 
 Define_Module(DNS);
 
@@ -74,8 +77,7 @@ void DNS::handleMessage(cMessage *msg)
 void DNS::startRequestDNS(cMessage *msg)
 {
     DNSRequest *dns = new DNSRequest("DNS_Request");
-    dns->setUrl("youtube.com");
-    dns->setIdAppModule(msg->par("id_appModule"));
+    dns->setUrl(msg->par("address"));
 
     IPvXAddress srcAddr = IPvXAddressResolver().resolve(msg->par("locAdd"));
     IPvXAddress destAddr = IPvXAddressResolver().resolve(par("DNS_Address"));
@@ -98,7 +100,6 @@ void DNS::sendDNSReply(cMessage *msg)
 
     DNSReply *ReplyDNS = new DNSReply("DNSReply");
     ReplyDNS->setURL(request->getUrl());
-    ReplyDNS->setIdAppModule(request->getIdAppModule());
 
     for (it = resolved.begin(); it != resolved.end(); ++it)
     {
@@ -130,40 +131,33 @@ void DNS::processDNSReply(cMessage *msg)
     DNSReply *reply = (DNSReply *)msg;
 
     DNSTable[reply->getURL()] = reply->getDest_adress();
-    cMessage *return_control = new cMessage("end_DNS");
-    return_control->setKind(0);
-
-    cModule *dest = this->gate("ipOut")->getNextGate()->getOwnerModule();
-    cModule *owner = NULL;
-
-    int size = dest->gate("transportOut", 0)->getVectorSize();
-
-    for (int i=0; i<size; i++)
+    cMessage *return_control = new cMessage("DNSResponse");
+    if (strcmp(reply->getURL(), "youtube.com") == 0)
     {
-        owner = dest->gate("transportOut", i)->getNextGate()->getOwnerModule();
-        if(strcmp(owner->getClassName(), "TCP") == 0)
-            break;
+        return_control->setKind(50);
+        return_control->addPar("resolvedAddress") = reply->getDest_adress().str().c_str();
+    }
+    else
+    {
+        return_control->setKind(0);
+        return_control->addPar("resolvedAddress") = reply->getDest_adress().str().c_str();
     }
 
-    size = owner->gate("appOut", 0)->getVectorSize();
-    for (int i=0; i<size; i++)
-    {
-        dest = owner->gate("appOut", i)->getNextGate()->getOwnerModule();
-        if(dest->getId() == reply->getIdAppModule())
-            break;
-    }
+    cModule *tcpAppModule = getParentModule()->getSubmodule("tcpApp",0);
+    TCP_YT_request_App *TCP_request_App = check_and_cast<TCP_YT_request_App *>(tcpAppModule);
 
     delete(reply);
 
-    sendDirect(return_control,dest,"fromDNS");
+    sendDirect(return_control,TCP_request_App,"fromDNS");
 }
 
-bool DNS::findAddress(const char *url)
+std::string DNS::findAddress(const char *url)
 {
+    std::string addr = "";
     for (it_table = DNSTable.begin(); it_table != DNSTable.end(); ++it_table)
     {
         if (strcmp(url, it_table->first.c_str()) == 0)
-            return true;
+            addr = it_table->second.str();
     }
-    return false;
+    return addr;
 }

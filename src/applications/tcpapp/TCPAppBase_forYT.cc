@@ -11,12 +11,13 @@
 // See the GNU Lesser General Public License for more details.
 //
 
-#include <string.h>
+
 #include "TCPAppBase_forYT.h"
 #include "DNS.h"
 
 #include "IPvXAddressResolver.h"
 
+using namespace std;
 
 simsignal_t TCPAppBase_forYT::connectSignal = registerSignal("connect");
 simsignal_t TCPAppBase_forYT::rcvdPkSignal = registerSignal("rcvdPk");
@@ -55,33 +56,48 @@ void TCPAppBase_forYT::initialize(int stage)
 
 void TCPAppBase_forYT::handleMessage(cMessage *msg)
 {
-    if (msg->isSelfMessage() && msg->getKind() == 100)
+    if (msg->getKind() == 100)    //Se il messaggio è per la verifica di un URL in tabella DNS
     {
+        const char *address = msg->par("address");
         cModule *dnsModule = getParentModule()->getSubmodule("DNS");
         DNS *dns = check_and_cast<DNS *>(dnsModule);
+        std::string resolved = dns->findAddress(address);
 
-        if (!dns->findAddress("youtube.com"))
-            startDNS();
-        else
+        if (resolved != "")                                   //Se l'indirizzo è in tabella
         {
-            msg->setKind(0);
+            if (strcmp(address, "youtube.com") == 0)            //Se l'indirizzo è youtube.com
+            {
+                msg->addPar("resolvedAddress") = resolved.c_str();
+                msg->setKind(50);                               //fai partire la richiesta al front-end server (HTTP Request)
+            }
+            else                                                //altrimenti se è l'indirizzo del video server
+            {
+                msg->addPar("resolvedAddress") = resolved.c_str();
+                msg->setKind(0);                                //fai partire la richiesta del video (HTTP Videoplayback)
+            }
             handleTimer(msg);
         }
+        else                                      //Altrimenti se l'indirizzo per l'URL richiesto non è in tabella DNS
+            startDNS(msg);                        //fai partire la risoluzione DNS
     }
-    else if (msg->isSelfMessage() || msg->getKind() == 0)
+
+    else if (msg->isSelfMessage() || msg->getKind() == 0 || msg->getKind() == 50)    //Altrimenti se è la risposta ad una richiesta DNS
+        handleTimer(msg);                                                            //fa partire o la richiesta al front-end server o al video server
+
+    else if (msg->isSelfMessage())
         handleTimer(msg);
     else
         socket.processMessage(msg);
 
 }
 
-void TCPAppBase_forYT::connect()
+void TCPAppBase_forYT::connect(const char *connectAdd)
 {
     // we need a new connId if this is not the first connection
     socket.renewSocket();
 
     // connect
-    const char *connectAddress = par("connectAddress");
+    const char *connectAddress = connectAdd;
     int connectPort = par("connectPort");
 
     EV << "issuing OPEN command\n";

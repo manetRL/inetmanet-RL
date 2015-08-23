@@ -95,16 +95,18 @@ simple TCP_YT_request_App like ITCPApp
     parameters:
         string localAddress = default(""); // may be left empty ("")
         int localPort = default(-1); // port number to listen on
-        string connectAddress = default("");  // server address (may be symbolic)
+//        string connectAddress = default("");  // server address (may be symbolic) E' il video server
         int connectPort = default(1000); // port number to connect to
+        string videoServerAddress @enum("googlevideo1.com","googlevideo2.com","googlevideo3.com","googlevideo2dotcom")= default("googlevideo1.com"); // Indirizzo del video server
+//        volatile string videoKind @enum("video1","video2","video3")= default("video1"); // Scelta del video da richiedere. Ognuno può essere associato ad un certo videoserver
         string dataTransferMode @enum("bytecount","object","bytestream") = default("bytecount");
         double startTime @unit(s) = default(1s); // time first session begins
         double stopTime @unit(s) = default(-1s);  // time of finishing sending, negative values mean forever
         volatile int numRequestsPerSession = default(1);  // number of requests sent per session
         volatile int requestLength @unit(B) = default(200B); // length of a request
 //        volatile int replyLength @unit(B) = default(1MiB); // length of a reply
-        string itag @enum("FLV_240p","ThreeGP_144p","MP4_360p","MP4_720p","FLV_360p","FLV_480p","ThreeGP_240p","MP4_1080p") = default("FLV_360p"); //itag del video da richiedere
-        int dur @unit(s) = default(60s); //durata del video da richiedere
+        volatile string itag @enum("FLV_240p","ThreeGP_144p","MP4_360p","MP4_720p","FLV_360p","FLV_480p","ThreeGP_240p","MP4_1080p") = default("FLV_360p"); //itag del video da richiedere
+        volatile int dur @unit(s) = default(60s); //durata del video da richiedere
         volatile double thinkTime @unit(s); // time gap between requests
         volatile double idleInterval @unit(s); // time gap between sessions
         volatile double reconnectInterval @unit(s) = default(30s);  // if connection breaks, waits this much before trying to reconnect
