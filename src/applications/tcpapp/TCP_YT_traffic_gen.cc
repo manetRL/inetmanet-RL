@@ -230,7 +230,7 @@ void TCP_YT_traffic_gen::sendStreamData(cMessage *timer)
 
     VideoStreamData *d = &(it->second);
 
-    if (firstPacket == 1)
+    if (firstPacket == 1)                        //Invia il primo pacchetto con i metatag e successivamente il burst iniziale.
     {
         // generate and send a packet
         YTVideoPacketMsg *pkt = new YTVideoPacketMsg("VideoStrmPk");
@@ -238,9 +238,7 @@ void TCP_YT_traffic_gen::sendStreamData(cMessage *timer)
         TCPSendCommand *attach = new TCPSendCommand();
         *attach = *d->cmd;
         pkt->setControlInfo(attach);
-        long byteLen = (d->vidBitrt*40*1000)/8;
-        if (byteLen > d->videoSize)
-            byteLen=d->videoSize;
+        long byteLen = 500;                         //Grandezza del pacchetto con i metatag
         pkt->setByteLength(byteLen);
         pkt->setMetaTag_bitrate(d->vidBitrt);
         pkt->setMetaTag_durata(d->durata);
@@ -252,6 +250,24 @@ void TCP_YT_traffic_gen::sendStreamData(cMessage *timer)
         numPkSent++;
 
         sendDown(pkt);
+
+        //Qui invia il burst iniziale
+
+        cPacket *pkt2 = new cPacket("VideoStrmPk");
+        pkt2->setKind(TCP_C_SEND);
+        TCPSendCommand *attach2 = new TCPSendCommand();
+        *attach2 = *d->cmd;
+        pkt2->setControlInfo(attach2);
+        byteLen = (d->vidBitrt*40*1000)/8;
+        if (byteLen > d->videoSize)
+            byteLen=d->videoSize;
+        pkt2->setByteLength(byteLen);
+        emit(sentPkSignal, pkt2);
+        d->bytesLeft -= byteLen;
+        d->numPkSent++;
+        numPkSent++;
+
+        sendDown(pkt2);
 
     }
     else
