@@ -24,6 +24,7 @@ class DNS : public cSimpleModule
     //Attributi
     protected:
     bool response_disabled;
+    int ttlDNS;
 
     cXMLElement *DNSconfiguration;
     std::map<string, IPvXAddress> resolved;         //Tabella DNS del server in cui sono presenti tutte le risoluzioni degli indirizzi
@@ -42,6 +43,9 @@ class DNS : public cSimpleModule
     virtual void sendDNSReply(cMessage *msg);
 
     virtual void processDNSReply(cMessage *msg);
+
+    virtual void deleteEntryDNS(cMessage *msg);
+
 
 
 

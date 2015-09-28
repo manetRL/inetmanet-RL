@@ -42,6 +42,7 @@ void DNS::initialize(int stage)
     else if (stage == 3)
     {
         response_disabled = par("disable_response").boolValue();
+        ttlDNS = par("cancelDNSEntry");
 
         DNSconfiguration = par("config_address");
         cXMLElementList interfaceElements = DNSconfiguration->getChildrenByTagName("DNS_address");
@@ -71,6 +72,8 @@ void DNS::handleMessage(cMessage *msg)
     }
     else if (dynamic_cast<DNSReply *>(msg) != NULL)
         processDNSReply(msg);
+    else if (msg->isSelfMessage())
+        deleteEntryDNS(msg);
 
 }
 
@@ -131,6 +134,11 @@ void DNS::processDNSReply(cMessage *msg)
     DNSReply *reply = (DNSReply *)msg;
 
     DNSTable[reply->getURL()] = reply->getDest_adress();
+    cMessage *deleteDnsEntry = new cMessage("deleteDnsEntry");
+    deleteDnsEntry->addPar("URL") = reply->getURL();
+    simtime_t d = simTime() + (simtime_t) ttlDNS;
+    scheduleAt(d, deleteDnsEntry);
+
     cMessage *return_control = new cMessage("DNSResponse");
     if (strcmp(reply->getURL(), "youtube.com") == 0)
     {
@@ -160,4 +168,17 @@ std::string DNS::findAddress(const char *url)
             addr = it_table->second.str();
     }
     return addr;
+}
+
+void DNS::deleteEntryDNS(cMessage *msg)
+{
+    const char *url = msg->par("URL");
+    for (it_table = DNSTable.begin(); it_table != DNSTable.end(); ++it_table)
+        {
+            if (strcmp(url, it_table->first.c_str()) == 0)
+                DNSTable.erase(it_table);
+
+        }
+
+    delete msg;
 }

@@ -24,6 +24,7 @@ simple DNS
         string DNS_Address = default(""); // Indirizzo del server DNS
         xml config_address = default(xml("<config><DNS_address URL='**' address='0.0.0.0' /></config>")); // Configurazione tra URL e relativo indirizzo IP
         bool disable_response =default(true); //disabilita il funzionamento da server. Permette unicamente di mandare e ricevere richieste DNS ma non di rispondere a tali richieste
+        int cancelDNSEntry @unit(s) = default(3600s);
         
     gates:
         input ipIn;
