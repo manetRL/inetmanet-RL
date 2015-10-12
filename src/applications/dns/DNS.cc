@@ -176,8 +176,10 @@ void DNS::deleteEntryDNS(cMessage *msg)
     for (it_table = DNSTable.begin(); it_table != DNSTable.end(); ++it_table)
         {
             if (strcmp(url, it_table->first.c_str()) == 0)
+            {
                 DNSTable.erase(it_table);
-
+                break;
+            }
         }
 
     delete msg;

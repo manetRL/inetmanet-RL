@@ -20,6 +20,8 @@ package inet.linklayer.YT_traffic_analyzer;
 //
 simple YT_traffic_analyzer
 {
+    parameters:
+        int numAckToJump = default(0);
     gates:
         input traffic_In @directIn;
     
