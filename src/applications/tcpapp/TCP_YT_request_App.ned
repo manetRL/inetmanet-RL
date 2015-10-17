@@ -107,7 +107,9 @@ simple TCP_YT_request_App like ITCPApp
 //        volatile int replyLength @unit(B) = default(1MiB); // length of a reply
         volatile string itag @enum("FLV_240p","ThreeGP_144p","MP4_360p","MP4_720p","FLV_360p","FLV_480p","ThreeGP_240p","MP4_1080p") = default("FLV_360p"); //itag del video da richiedere
         volatile int dur @unit(s) = default(60s); //durata del video da richiedere
-        volatile double thinkTime @unit(s); // time gap between requests
+//        volatile double abortTime @unit(s) = default(0s);  //Tempo dopo il quale scatta la user impatience (in tal caso un abort); valori di 0 o minori di 0 disabilitano l'abort
+        volatile bool sendAbort = default(false); //Messo a true mette il RST a 1 sul segmento TCP che sta a significare l'interruzione volontaria da parte dell'utente
+        volatile double thinkTime @unit(s) = default(0s); // time gap between requests
         volatile double idleInterval @unit(s); // time gap between sessions
         volatile double reconnectInterval @unit(s) = default(30s);  // if connection breaks, waits this much before trying to reconnect
         @display("i=block/app");

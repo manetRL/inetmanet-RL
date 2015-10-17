@@ -208,6 +208,26 @@ void TCP_YT_traffic_gen::handleMessage(cMessage *msg)
         // ... then transmit first packet right away
         sendStreamData(timer);
     }
+
+    else if (msg->getKind() == TCP_I_CONNECTION_RESET)
+    {
+        TCPCommand *aaa = (TCPCommand *)msg->getControlInfo();
+        int connectID = aaa->getConnId();
+        VideoStreamMap::iterator it;
+        for (it = streams.begin(); it != streams.end(); ++it)
+        {
+            if (it->second.cmd->getConnId() == connectID)
+            {
+                delete cancelEvent(it->second.timer);
+                streams.erase(it);
+                delete msg;
+                break;
+            }
+        }
+//        msg->setName("close");
+//        msg->setKind(TCP_C_CLOSE);
+//        sendDown(msg);
+    }
     else
     {
         // some indication -- ignore

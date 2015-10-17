@@ -80,14 +80,26 @@ void TCPAppBase_forYT::handleMessage(cMessage *msg)
         else                                      //Altrimenti se l'indirizzo per l'URL richiesto non è in tabella DNS
             startDNS(msg);                        //fai partire la risoluzione DNS
     }
+//    else if (msg->isSelfMessage() && msg->getKind() == 2)
+//    {
+//        socket.abort();
+//        delete msg;
+//        rescheduleTimer();
+//    }
 
     else if (msg->isSelfMessage() || msg->getKind() == 0 || msg->getKind() == 50)    //Altrimenti se è la risposta ad una richiesta DNS
         handleTimer(msg);                                                            //fa partire o la richiesta al front-end server o al video server
 
-    else if (msg->isSelfMessage())
-        handleTimer(msg);
     else
+    {
         socket.processMessage(msg);
+
+        if (par("sendAbort"))
+        {
+            socket.abort();
+            rescheduleTimer();
+        }
+    }
 
 }
 

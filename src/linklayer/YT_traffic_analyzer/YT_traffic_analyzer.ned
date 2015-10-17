@@ -22,6 +22,9 @@ simple YT_traffic_analyzer
 {
     parameters:
         int numAckToJump = default(0);
+        double DataNotFound @unit(s) = default(15s);  //Secondi dopo i quali, non avendo trovato i metatag del video, vengono eliminate le statistiche
+        int MaxStreamCaptured = default(10);     //Numero massimo di flussi contemporanei di cui è possibile raccogliere statistiche.
+        volatile double timeOff @unit(s) = default(0s);  //Tempo in cui l'algoritmo rimane spento e non cattura NULLA
     gates:
         input traffic_In @directIn;
     

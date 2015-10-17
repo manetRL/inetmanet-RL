@@ -14,9 +14,15 @@ class YT_traffic_analyzer : public QueueBase
     double theta0;
     double theta1;
     int numAckToJump;
+    int MaxStreamCaptured;
+    bool AlgActive;
+    double timeOff;
+    cMessage *AlgOff;
 
     //Attributi
     public:
+    double interval;
+
     struct RebufferingEvent
     {
         double time;
@@ -26,6 +32,7 @@ class YT_traffic_analyzer : public QueueBase
 
     struct StreamingStats
     {
+        cMessage *timer;
         int numAck;              //Porta il conto degli ack saltati dal controllo
         IPvXAddress clientAddr;
         IPvXAddress serverAddr;
@@ -34,6 +41,7 @@ class YT_traffic_analyzer : public QueueBase
         int bitrate;            // in kbps
         int videoSize;          // in Byte
         double ti;           // istante di osservazione dell'ack, in secondi
+        bool RSTfound;
         bool requestFound;
         bool MetaTagReceived;
         bool firstAck;
@@ -46,7 +54,7 @@ class YT_traffic_analyzer : public QueueBase
         double rebufferingTime;                // durata dello stallo attuale
         int NumEventRebuf;                     // Numero di eventi di rebuffering
         std::vector<RebufferingEvent> events;  // Vettore contenente gli eventi di rebuffering
-        StreamingStats() { numAck = 0; clientAddr.set("0.0.0.0"); serverAddr.set("0.0.0.0"); dur = 0; itag = 0; bitrate = 0; videoSize = 0; ti = 0; requestFound = false; MetaTagReceived = false; firstAck = false; psi = false; Di = 0; beta = 0; tau = 0; rho = 0; rebufferingTime = 0; NumEventRebuf = 0;
+        StreamingStats() { numAck = 0; clientAddr.set("0.0.0.0"); serverAddr.set("0.0.0.0"); dur = 0; itag = 0; bitrate = 0; videoSize = 0; ti = 0; RSTfound = false; requestFound = false; MetaTagReceived = false; firstAck = false; psi = false; Di = 0; beta = 0; tau = 0; rho = 0; rebufferingTime = 0; NumEventRebuf = 0;
                            RebufferingEvent *eve = new RebufferingEvent;
                            events.push_back(*eve); }
     };
@@ -60,7 +68,7 @@ class YT_traffic_analyzer : public QueueBase
     //Metodi
     public:
     YT_traffic_analyzer() {}
-    virtual ~YT_traffic_analyzer() {}
+    virtual ~YT_traffic_analyzer() {cancelEvent(AlgOff); delete(AlgOff);}
 
     //Metodi
         protected:
@@ -87,5 +95,12 @@ class YT_traffic_analyzer : public QueueBase
         virtual void analyzeCtoS(cPacket *packet, StreamingStats *stream);
 
         virtual void analyzeStoC(cPacket *packet, StreamingStats *stream);
+
+        /**
+         * Funzione per cancellare le statistiche di un flusso di cui non sono stati catturati i metatag.
+         */
+        virtual void deleteStats(cMessage *msg);
+
+        virtual void rescheduleTimerOff();
 
 };

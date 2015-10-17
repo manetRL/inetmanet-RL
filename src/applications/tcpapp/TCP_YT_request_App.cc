@@ -30,6 +30,7 @@
 
 #define MSGKIND_CONNECT  0
 #define MSGKIND_SEND     1
+#define MSGKIND_ABORT    2
 #define MSGKIND_FRONTEND 50
 #define MSGKIND_DNS      100
 
@@ -175,6 +176,14 @@ void TCP_YT_request_App::sendRequest()
      msg->setItag(itag_num);
      msg->setDur(dur);
 
+//     if ((simtime_t)par("abortTime") > 0)
+//     {
+//         abortMsg = new cMessage("abort");
+//         abortMsg->setKind(MSGKIND_ABORT);
+//         simtime_t d = simTime() + (simtime_t) par("abortTime");
+//         scheduleAt(d, abortMsg);
+//     }
+
      sendPacket(msg);
 }
 
@@ -251,7 +260,7 @@ void TCP_YT_request_App::rescheduleOrDeleteTimer(simtime_t d, short int msgKind)
 void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, bool urgent)
 {
     TCPAppBase_forYT::socketDataArrived(connId, ptr, msg, urgent);
-    bytesRcvd_inSession = bytesRcvd%videoSize;//mod(VIDEOSIZE)      DA MODIFICARE IMMEDIATAMENTE
+    bytesRcvd_inSession = bytesRcvd%videoSize;//mod(VIDEOSIZE)
 
     if (numRequestsToSend > 0)
     {
@@ -268,6 +277,12 @@ void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, 
         EV << "reply to last request arrived, closing session\n";
         close();
     }
+
+//    if (socket.getState() != TCPSocket::LOCALLY_CLOSED && par("sendAbort"))
+//    {
+//        socket.abort();
+//        rescheduleTimer();
+//    }
 }
 
 void TCP_YT_request_App::socketClosed(int connId, void *ptr)
@@ -292,6 +307,15 @@ void TCP_YT_request_App::socketFailure(int connId, void *ptr, int code)
         simtime_t d = simTime() + (simtime_t) par("reconnectInterval");
         rescheduleOrDeleteTimer(d, MSGKIND_CONNECT);
     }
+}
+
+void TCP_YT_request_App::rescheduleTimer()
+{
+    if (timeoutMsg)
+        {
+            simtime_t d = simTime() + (simtime_t) par("idleInterval");
+            rescheduleOrDeleteTimer(d, MSGKIND_DNS);
+        }
 }
 
 itagType TCP_YT_request_App::convertStringToItag(const char * itag)

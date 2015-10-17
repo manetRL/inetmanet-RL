@@ -110,6 +110,8 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     /** Redefine to handle incoming TCPStatusInfo. */
     virtual void socketStatusArrived(int connId, void *yourPtr, TCPStatusInfo *status) {delete status;}
     //@}
+
+    virtual void rescheduleTimer()=0;
 };
 
 #endif

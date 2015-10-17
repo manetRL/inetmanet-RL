@@ -32,6 +32,7 @@
 class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
 {
   protected:
+    cMessage *abortMsg;
     cMessage *timeoutMsg;
     NodeStatus *nodeStatus;
     bool earlySend;  // if true, don't wait with sendRequest() until established()
@@ -95,6 +96,8 @@ class INET_API TCP_YT_request_App : public TCPAppBase_forYT, public ILifecycle
     virtual void socketFailure(int connId, void *yourPtr, int code);
 
     virtual bool isNodeUp();
+
+    virtual void rescheduleTimer();
 };
 
 #endif

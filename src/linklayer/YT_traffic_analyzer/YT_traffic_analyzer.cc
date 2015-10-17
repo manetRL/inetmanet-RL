@@ -25,6 +25,8 @@
 #include "TCPSegment.h"
 #include "YTVideoPacketMsg_m.h"
 
+#define TIMER_STREAM_NOT_FOUND 1
+#define TIMER_ALG_OFF          2
 
 using namespace std;
 
@@ -35,11 +37,23 @@ void YT_traffic_analyzer::initialize()
     theta0 = 2.2;
     theta1 = 0.4;
     numAckToJump = par("numAckToJump");
+    interval = par("DataNotFound");
+    MaxStreamCaptured = par("MaxStreamCaptured");
+    timeOff = par("timeOff");
+    AlgOff = new cMessage("timer");
+    AlgActive = true;
 }
 
 void YT_traffic_analyzer::handleMessage(cMessage *msg)
 {
-    QueueBase::handleMessage(msg);
+    if (msg->isSelfMessage() && msg->getKind() == TIMER_STREAM_NOT_FOUND)
+        deleteStats(msg);
+    else if (msg->isSelfMessage() && msg->getKind() == TIMER_ALG_OFF)
+        AlgActive = true;
+    else if (AlgActive || container.size() != 0)
+        QueueBase::handleMessage(msg);
+    else
+        delete msg;
 }
 
 void YT_traffic_analyzer::endService(cPacket *packet)
@@ -74,22 +88,31 @@ void YT_traffic_analyzer::handleIncomingDatagram(IPv4Datagram *datagram)   //Qui
 
     cPacket *packet = IPv4decapsulate(datagram);
 
-    if (dynamic_cast<DNSReply *>(packet) != NULL)
+    if (dynamic_cast<DNSReply *>(packet) != NULL && AlgActive)
     {
-        if(strcmp(((DNSReply *)packet)->getURL(), "googlevideo1.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo2.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo3.com") == 0)
+        if (container.size() < MaxStreamCaptured)
         {
-            for (it = container.begin(); it != container.end(); ++it)                                                            //
-            {                                                                                                                    //
-                if (it->clientAddr == datagram->getDestAddress() && it->serverAddr == ((DNSReply *)packet)->getDest_adress())    // QUESTO PEZZO NON PERMETTE DI AVERE DUE FLUSSI CONTEMPORANEI
-                {                                                                                                                // PER LO STESSO CLIENT.
-                    container.erase(it);                                                                                         //
-                    break;                                                                                                       //
-                }                                                                                                                //
-            }                                                                                                                    //
-            StreamingStats *stream = new StreamingStats();
-            stream->clientAddr = datagram->getDestAddress();
-            stream->serverAddr = ((DNSReply *)packet)->getDest_adress();
-            container.push_back(*stream);
+            if(strcmp(((DNSReply *)packet)->getURL(), "googlevideo1.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo2.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo3.com") == 0)
+            {
+                for (it = container.begin(); it != container.end(); ++it)                                                            //
+                {                                                                                                                    //
+                    if (it->clientAddr == datagram->getDestAddress() && it->serverAddr == ((DNSReply *)packet)->getDest_adress())    // QUESTO PEZZO NON PERMETTE DI AVERE DUE FLUSSI CONTEMPORANEI
+                    {                                                                                                                // PER LO STESSO CLIENT.
+                        cancelEvent(it->timer);                                                                                      //
+                        container.erase(it);                                                                                         //
+                        break;                                                                                                       //
+                    }                                                                                                                //
+                }                                                                                                                    //
+                StreamingStats *stream = new StreamingStats();
+                stream->clientAddr = datagram->getDestAddress();
+                stream->serverAddr = ((DNSReply *)packet)->getDest_adress();
+                cMessage *stopTimer = new cMessage("Data_not_found");
+                stopTimer->setContextPointer(stream);
+                stopTimer->setKind(TIMER_STREAM_NOT_FOUND);
+                scheduleAt(simTime() + interval, stopTimer);
+                stream->timer = stopTimer;
+                container.push_back(*stream);
+            }
         }
     }
     else
@@ -220,11 +243,24 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                     break;
                 }
             }
+            if (container.size() == 0)
+                rescheduleTimerOff();
         }
-        else if (tcpseg->getRstBit())
+        else if (tcpseg->getRstBit())     //Vi si entra quando si trova il RST settato: ciò significa che il video è stato interrotto dall'utente per cui si termina la raccolta di statistiche per tale flusso
         {
-            int pollll= 5;
-
+            stream->RSTfound = true;
+            record.push_back(*stream);
+            for (it = container.begin(); it != container.end(); ++it)
+            {
+                IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
+                if (it->clientAddr == contr->getSrcAddr() && it->serverAddr == contr->getDestAddr())
+                {
+                    container.erase(it);
+                    break;
+                }
+            }
+            if (container.size() == 0)
+                rescheduleTimerOff();
         }
     }
     else
@@ -250,6 +286,31 @@ void YT_traffic_analyzer::analyzeStoC(cPacket *packet, StreamingStats *stream)
     }
     else
         return;
+
+}
+
+void YT_traffic_analyzer::deleteStats(cMessage *msg)
+{
+    StreamingStats *flusso = (StreamingStats *)msg->getContextPointer();
+
+    for (it = container.begin(); it != container.end(); ++it)
+    {
+        if (it->clientAddr == flusso->clientAddr && it->serverAddr == flusso->serverAddr && !it->MetaTagReceived)
+        {
+            container.erase(it);
+            break;
+        }
+    }
+//    if (container.size() == 0)
+//        rescheduleTimerOff();
+    delete msg;
+}
+
+void YT_traffic_analyzer::rescheduleTimerOff()
+{
+    AlgActive = false;
+    AlgOff->setKind(TIMER_ALG_OFF);
+    scheduleAt(simTime() + timeOff, AlgOff);
 
 }
 
