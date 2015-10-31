@@ -484,7 +484,7 @@ void TCP::finish()
 
 TCPSendQueue* TCP::createSendQueue(TCPDataTransferMode transferModeP)
 {
-    cModule *mod = gate("appOut", 0)->getNextGate()->getOwnerModule();
+    cModule *mod = gate("appOut", 0)->getNextGate()->getOwnerModule();   //Da correggere nel caso volessi usare più tcpApp diverse da trafficGen
     if (strcmp(mod->getClassName(), "TCP_YT_traffic_gen") == 0)
         return new TCPMsgBasedSendQueue_forYT();
     switch (transferModeP)

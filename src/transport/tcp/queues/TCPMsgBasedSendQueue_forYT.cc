@@ -19,7 +19,7 @@
 #include "TCPMsgBasedSendQueue_forYT.h"
 
 #include "TCPSegment.h"
-
+#include "TCP_YT_request_App.h"
 #include "Control_block_forYT_m.h"
 #include <csimplemodule.h>
 
@@ -44,8 +44,17 @@ void TCPMsgBasedSendQueue_forYT::init(uint32 startSeq)
 {
     begin = startSeq;
     end = startSeq;
+    bool found = false;
+    int l = 0;
     cModule *mod = this->conn->getTcpMain();
-    cModule *dest = mod->gate("appOut", 0)->getNextGate()->getOwnerModule();
+    cModule *dest;
+    while(!found)
+    {
+        dest = mod->gate("appOut", l)->getNextGate()->getOwnerModule();
+        if (dest->par("localPort").operator unsigned int() == this->conn->localPort)
+            found = true;
+        l++;
+    }
     SendBufferDimension = dest->par("BufferDimension_forTCP");
 }
 
@@ -77,7 +86,16 @@ void TCPMsgBasedSendQueue_forYT::enqueueAppData(cPacket *msg)
         action->setConnID(IDconn);
         action->setState(true);
         cModule *mod = msg->getArrivalModule();
-        cModule *dest = mod->gate("appOut", 0)->getNextGate()->getOwnerModule();
+        bool found = false;
+        int l = 0;
+        cModule *dest;
+        while(!found)
+        {
+            dest = mod->gate("appOut", l)->getNextGate()->getOwnerModule();
+            if (dest->par("localPort").operator unsigned int() == this->conn->localPort)
+                found = true;
+            l++;
+        }
         TCP *tcp = check_and_cast<TCP *>(mod);
         tcp->sendDirect(action, dest, "blockManager");
     }
@@ -154,8 +172,17 @@ void TCPMsgBasedSendQueue_forYT::discardUpTo(uint32 seqNum)
         Control_block_forYT *action = new Control_block_forYT("ResumeApp");
         action->setConnID(IDconn);
         action->setState(false);
+        bool found = false;
+        int l = 0;
         cModule *mod = this->conn->getTcpMain();
-        cModule *dest = mod->gate("appOut", 0)->getNextGate()->getOwnerModule();
+        cModule *dest;
+        while(!found)
+        {
+            dest = mod->gate("appOut", l)->getNextGate()->getOwnerModule();
+            if (dest->par("localPort").operator unsigned int() == this->conn->localPort)
+                found = true;
+            l++;
+        }
         TCP *tcp = check_and_cast<TCP *>(mod);
         tcp->sendDirect(action, dest, "blockManager");
     }

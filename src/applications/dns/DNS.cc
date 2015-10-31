@@ -81,6 +81,7 @@ void DNS::startRequestDNS(cMessage *msg)
 {
     DNSRequest *dns = new DNSRequest("DNS_Request");
     dns->setUrl(msg->par("address"));
+    dns->setTcpAppID(msg->par("tcpAppID"));
 
     IPvXAddress srcAddr = IPvXAddressResolver().resolve(msg->par("locAdd"));
     IPvXAddress destAddr = IPvXAddressResolver().resolve(par("DNS_Address"));
@@ -103,6 +104,7 @@ void DNS::sendDNSReply(cMessage *msg)
 
     DNSReply *ReplyDNS = new DNSReply("DNSReply");
     ReplyDNS->setURL(request->getUrl());
+    ReplyDNS->setTcpAppID(request->getTcpAppID());
 
     for (it = resolved.begin(); it != resolved.end(); ++it)
     {
@@ -151,8 +153,17 @@ void DNS::processDNSReply(cMessage *msg)
         return_control->addPar("resolvedAddress") = reply->getDest_adress().str().c_str();
     }
 
-    cModule *tcpAppModule = getParentModule()->getSubmodule("tcpApp",0);
-    TCP_YT_request_App *TCP_request_App = check_and_cast<TCP_YT_request_App *>(tcpAppModule);
+    bool found = false;
+    int l = 0;
+    TCP_YT_request_App *TCP_request_App;
+    while(!found)
+    {
+        cModule *tcpAppModule = getParentModule()->getSubmodule("tcpApp",l);
+        TCP_request_App = check_and_cast<TCP_YT_request_App *>(tcpAppModule);
+        if (TCP_request_App->getId() == reply->getTcpAppID())
+            found = true;
+        l++;
+    }
 
     delete(reply);
 

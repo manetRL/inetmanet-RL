@@ -117,6 +117,7 @@ void TCP_YT_request_App::startDNS(cMessage *msg)
     startDNS->setKind(MSGKIND_DNS);
     startDNS->addPar("locAdd") = par("localAddress").stringValue();
     startDNS->addPar("address") = msg->par("address");
+    startDNS->addPar("tcpAppID") = msg->getArrivalModuleId();
 
     cModule *dnsModule = getParentModule()->getSubmodule("DNS");
     DNS *dns = check_and_cast<DNS *>(dnsModule);
@@ -136,6 +137,7 @@ void TCP_YT_request_App::requestPage(cMessage *msg)
     tofrontendApp->setKind(MSGKIND_FRONTEND);
     tofrontendApp->addPar("locAdd") = par("localAddress").stringValue();
     tofrontendApp->addPar("destinationAddress") = destAddress;
+    tofrontendApp->addPar("tcpAppID") = msg->getArrivalModuleId();
 
     cPar param = this->par("videoServerAddress");                                               //
     if (!param.isExpression())                                                                  //
@@ -145,8 +147,6 @@ void TCP_YT_request_App::requestPage(cMessage *msg)
 
     cModule *frontendServerModule = getParentModule()->getSubmodule("FrontendApp");
     FrontendServer *frontendServer = check_and_cast<FrontendServer *>(frontendServerModule);
-
-//    delete(msg);
 
     if (!msg->isSelfMessage())
         delete(msg);
@@ -175,14 +175,6 @@ void TCP_YT_request_App::sendRequest()
      msg->setByteLength(requestLength);
      msg->setItag(itag_num);
      msg->setDur(dur);
-
-//     if ((simtime_t)par("abortTime") > 0)
-//     {
-//         abortMsg = new cMessage("abort");
-//         abortMsg->setKind(MSGKIND_ABORT);
-//         simtime_t d = simTime() + (simtime_t) par("abortTime");
-//         scheduleAt(d, abortMsg);
-//     }
 
      sendPacket(msg);
 }
@@ -233,6 +225,7 @@ void TCP_YT_request_App::socketEstablished(int connId, void *ptr)
     if (numRequestsToSend < 1)
         numRequestsToSend = 1;
     bytesRcvd_inSession = 0;
+    bytesRcvd_now = 0;
 
     // perform first request if not already done (next one will be sent when reply arrives)
     if (!earlySend)
@@ -260,7 +253,7 @@ void TCP_YT_request_App::rescheduleOrDeleteTimer(simtime_t d, short int msgKind)
 void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, bool urgent)
 {
     TCPAppBase_forYT::socketDataArrived(connId, ptr, msg, urgent);
-    bytesRcvd_inSession = bytesRcvd%videoSize;//mod(VIDEOSIZE)
+    bytesRcvd_inSession = bytesRcvd_now%videoSize;//mod(VIDEOSIZE)
 
     if (numRequestsToSend > 0)
     {

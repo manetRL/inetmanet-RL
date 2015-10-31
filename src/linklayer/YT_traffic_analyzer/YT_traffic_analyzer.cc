@@ -156,7 +156,6 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                 stream->requestFound = true;
             }
         }
-
         else if (tcpseg->getAckBit() && !tcpseg->getFinBit() && stream->MetaTagReceived)    // verifica ACK ignorando quelli prima dei metatag e quelli col FIN settato  ( FORSE ANCHE QUELLI COL RST!!! )
         {
             if (!stream->firstAck)         //Condizione per il controllo del primo ACK
@@ -164,6 +163,7 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                 stream->Di = tcpseg->getAckNo();
                 stream->Di_base = tcpseg->getAckNo();
                 stream->ti = simTime().dbl();
+                stream->tInit = simTime().dbl();
                 stream->firstAck = true;
                 return;
             }
@@ -192,6 +192,18 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                 stream->psi = true;
                 stream->rho = stream->rho + deltat;
                 stream->beta = stream->beta + tau_dt - deltat;
+                if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
+                {
+                    stream->rho = stream->rho - (0.4 - stream->beta);    //Tale istruzione corregge la quantità di video riprodotta dovuta al fatto di essere scesi al di sotto di 0.4 secondi di video nel buffer
+                    stream->beta = 0.4;
+                    stream->psi = false;
+                    stream->NumEventRebuf = stream->NumEventRebuf + 1;
+                    stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
+                    RebufferingEvent *eve = new RebufferingEvent;
+                    eve->time = simTime().dbl() - stream->tInit;;
+                    stream->events.push_back(*eve);
+                    return;
+                }
             }
             else if (!stream->psi && (stream->beta + tau_dt) < theta0)  //Caso STALLO -> STALLO
             {
@@ -205,12 +217,13 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                 stream->beta = stream->beta + tau_dt - deltat;
                 if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
                 {
+                    stream->rho = stream->rho - (0.4 - stream->beta);
                     stream->beta = 0.4;
                     stream->psi = false;
                     stream->NumEventRebuf = stream->NumEventRebuf + 1;
                     stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
                     RebufferingEvent *eve = new RebufferingEvent;
-                    eve->time = simTime().dbl();
+                    eve->time = simTime().dbl() - stream->tInit;
                     stream->events.push_back(*eve);
                     return;
                 }

@@ -19,9 +19,11 @@
 
 packet RequestPage {
     string videoServerToReply;
+    int tcpAppID;
 }
 
 packet ReplyPage {
     string videoServerURL;
+    int tcpAppID;
     
 }

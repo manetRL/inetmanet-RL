@@ -21,4 +21,5 @@ cplusplus {{
 packet DNSRequest
 {
     string url;
+    int tcpAppID;
 }

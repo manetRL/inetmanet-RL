@@ -163,6 +163,7 @@ void TCPAppBase_forYT::socketDataArrived(int, void *, cPacket *msg, bool)
     // *redefine* to perform or schedule next sending
     packetsRcvd++;
     bytesRcvd += msg->getByteLength();
+    bytesRcvd_now += msg->getByteLength();
     emit(rcvdPkSignal, msg);
     delete msg;
 }

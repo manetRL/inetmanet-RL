@@ -52,6 +52,7 @@ void FrontendServer::sendRequestPage(cMessage *msg)
     RequestPage *requestPage = new RequestPage("HTTP Get");
     requestPage->setByteLength(200);
     requestPage->setVideoServerToReply(msg->par("videoServer").stringValue());
+    requestPage->setTcpAppID(msg->par("tcpAppID"));
 
     IPvXAddress srcAddr = IPvXAddressResolver().resolve(msg->par("locAdd"));
     IPvXAddress destAddr = IPvXAddressResolver().resolve(msg->par("destinationAddress"));
@@ -75,6 +76,7 @@ void FrontendServer::sendReplyPage(cMessage *msg)
     ReplyPage *reply = new ReplyPage("HTTP 200 OK");
     reply->setByteLength(requestLength);
     reply->setVideoServerURL(request->getVideoServerToReply());
+    reply->setTcpAppID(request->getTcpAppID());
 
     IPvXAddress src, dest;
     IPv4ControlInfo *ctrl = (IPv4ControlInfo *)request->getControlInfo();
@@ -100,10 +102,19 @@ void FrontendServer::processReplyPage(cMessage *msg)
     return_control->setKind(100);
     return_control->addPar("address") = reply->getVideoServerURL();
 
-    cModule *tcpAppModule = getParentModule()->getSubmodule("tcpApp",0);
-    TCP_YT_request_App *TCP_request_App = check_and_cast<TCP_YT_request_App *>(tcpAppModule);
+    bool found = false;
+    int l = 0;
+    TCP_YT_request_App *TCP_request_App;
+    while(!found)
+    {
+        cModule *tcpAppModule = getParentModule()->getSubmodule("tcpApp",l);
+        TCP_request_App = check_and_cast<TCP_YT_request_App *>(tcpAppModule);
+        if (TCP_request_App->getId() == reply->getTcpAppID())
+            found = true;
+        l++;
+    }
 
-    delete(msg);
+    delete(reply);
 
     sendDirect(return_control,TCP_request_App,"fromDNS");
 }

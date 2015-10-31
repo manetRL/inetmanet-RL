@@ -40,6 +40,7 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
     int bytesSent;
     int bytesRcvd;
     int bytesRcvd_inSession;
+    int bytesRcvd_now;
 
     //statistics:
     static simsignal_t connectSignal;
