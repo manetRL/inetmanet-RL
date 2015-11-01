@@ -94,18 +94,19 @@ void YT_traffic_analyzer::handleIncomingDatagram(IPv4Datagram *datagram)   //Qui
         {
             if(strcmp(((DNSReply *)packet)->getURL(), "googlevideo1.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo2.com") == 0 || strcmp(((DNSReply *)packet)->getURL(), "googlevideo3.com") == 0)
             {
-                for (it = container.begin(); it != container.end(); ++it)                                                            //
-                {                                                                                                                    //
-                    if (it->clientAddr == datagram->getDestAddress() && it->serverAddr == ((DNSReply *)packet)->getDest_adress())    // QUESTO PEZZO NON PERMETTE DI AVERE DUE FLUSSI CONTEMPORANEI
-                    {                                                                                                                // PER LO STESSO CLIENT.
-                        cancelEvent(it->timer);                                                                                      //
-                        container.erase(it);                                                                                         //
-                        break;                                                                                                       //
-                    }                                                                                                                //
-                }                                                                                                                    //
+                for (it = container.begin(); it != container.end(); ++it)
+                {
+                    if (it->clientAddr == datagram->getDestAddress()) // && it->serverAddr == ((DNSReply *)packet)->getDest_adress())
+                    {
+                        delete(packet);
+                        delete(datagram);
+                        return;
+                    }
+                }
                 StreamingStats *stream = new StreamingStats();
                 stream->clientAddr = datagram->getDestAddress();
                 stream->serverAddr = ((DNSReply *)packet)->getDest_adress();
+                stream->tcpAppID = ((DNSReply *)packet)->getTcpAppID();
                 cMessage *stopTimer = new cMessage("Data_not_found");
                 stopTimer->setContextPointer(stream);
                 stopTimer->setKind(TIMER_STREAM_NOT_FOUND);
@@ -149,131 +150,135 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
         if (i>0)
         {
             cPacket *pack = tcpseg->getPayload(0).msg;
-            if (dynamic_cast<YTRequestMsg *>(pack) != NULL)              //Conosco quindi itag e durata del video, inoltre setto una variabile per segnalare che ho intercettato la richiesta video e sta per iniziare lo streaming
+            if (dynamic_cast<YTRequestMsg *>(pack) != NULL && pack->getSenderModuleId() == stream->tcpAppID)      //Conosco quindi itag e durata del video, inoltre setto una variabile per segnalare che ho intercettato la richiesta video e sta per iniziare lo streaming
             {
                 stream->dur = ((YTRequestMsg *)pack)->getDur();
                 stream->itag = ((YTRequestMsg *)pack)->getItag();
+                stream->TCPServerPort = tcpseg->getDestPort();
                 stream->requestFound = true;
             }
         }
-        else if (tcpseg->getAckBit() && !tcpseg->getFinBit() && stream->MetaTagReceived)    // verifica ACK ignorando quelli prima dei metatag e quelli col FIN settato  ( FORSE ANCHE QUELLI COL RST!!! )
+        else if (tcpseg->getDestPort() == stream->TCPServerPort)    //Verifica che il segmento tcp appartiene a questo flusso dati
         {
-            if (!stream->firstAck)         //Condizione per il controllo del primo ACK
+            if (tcpseg->getAckBit() && !tcpseg->getFinBit() && stream->MetaTagReceived)    // verifica ACK ignorando quelli prima dei metatag e quelli col FIN settato  ( FORSE ANCHE QUELLI COL RST!!! )
             {
-                stream->Di = tcpseg->getAckNo();
-                stream->Di_base = tcpseg->getAckNo();
-                stream->ti = simTime().dbl();
-                stream->tInit = simTime().dbl();
-                stream->firstAck = true;
-                return;
-            }
-
-            if (stream->numAck < numAckToJump)     //Condizione per saltare il controllo per un certo numero di ACK
-            {
-                stream->numAck = stream->numAck + 1;
-                return;
-            }
-            else
-                stream->numAck = 0;
-
-            // Cuore dell'algoritmo: devo verificare a quale dei 4 casi appartengo e fare le azioni appropriate.
-
-            //Devo calcolare tau nuovo e poi tau_dt
-            int D_deltat = tcpseg->getAckNo() - stream->Di;
-            stream->Di = tcpseg->getAckNo();
-            double newTau = (double)(stream->dur * (stream->Di - stream->Di_base))/stream->videoSize;
-            double tau_dt = newTau - stream->tau;   // quantità di secondi di video scaricati negli ultimi dt secondi
-            stream->tau = newTau;
-            double deltat = simTime().dbl() - stream->ti;
-            stream->ti = simTime().dbl();
-
-            if (!stream->psi && (stream->beta + tau_dt) >= theta0)      //Caso STALLO -> PLAY
-            {
-                stream->psi = true;
-                stream->rho = stream->rho + deltat;
-                stream->beta = stream->beta + tau_dt - deltat;
-                if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
+                if (!stream->firstAck)         //Condizione per il controllo del primo ACK
                 {
-                    stream->rho = stream->rho - (0.4 - stream->beta);    //Tale istruzione corregge la quantità di video riprodotta dovuta al fatto di essere scesi al di sotto di 0.4 secondi di video nel buffer
-                    stream->beta = 0.4;
-                    stream->psi = false;
-                    stream->NumEventRebuf = stream->NumEventRebuf + 1;
-                    stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
-                    RebufferingEvent *eve = new RebufferingEvent;
-                    eve->time = simTime().dbl() - stream->tInit;;
-                    stream->events.push_back(*eve);
-                    return;
-                }
-            }
-            else if (!stream->psi && (stream->beta + tau_dt) < theta0)  //Caso STALLO -> STALLO
-            {
-                stream->rebufferingTime = stream->rebufferingTime + deltat;
-                stream->beta = stream->beta + tau_dt;
-                stream->events.back().duration = stream->rebufferingTime;
-            }
-            else if (stream->psi && (stream->beta + tau_dt) > theta1)   //Caso PLAY -> PLAY
-            {
-                stream->rho = stream->rho + deltat;
-                stream->beta = stream->beta + tau_dt - deltat;
-                if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
-                {
-                    stream->rho = stream->rho - (0.4 - stream->beta);
-                    stream->beta = 0.4;
-                    stream->psi = false;
-                    stream->NumEventRebuf = stream->NumEventRebuf + 1;
-                    stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
-                    RebufferingEvent *eve = new RebufferingEvent;
-                    eve->time = simTime().dbl() - stream->tInit;
-                    stream->events.push_back(*eve);
+                    stream->Di = tcpseg->getAckNo();
+                    stream->Di_base = tcpseg->getAckNo();
+                    stream->ti = simTime().dbl();
+                    stream->tInit = simTime().dbl();
+                    stream->firstAck = true;
                     return;
                 }
 
-                float Vin = (D_deltat*8)/deltat;                  //Velocità di alimentazione del buffer (in bit/s)
-                float Vout = (stream->videoSize*8)/stream->dur;   //Velocità di riproduzione del video (in bit/s)
-
-                simtime_t Teb;
-                if (Vout > Vin)
+                if (stream->numAck < numAckToJump)     //Condizione per saltare il controllo per un certo numero di ACK
                 {
-                    Teb = ((stream->beta - theta1)*stream->videoSize*8/stream->dur)/(Vout - Vin);
-                    if (Teb < 5)
-                        numAckToJump = 0;
+                    stream->numAck = stream->numAck + 1;
+                    return;
                 }
                 else
-                    numAckToJump = par("numAckToJump");
+                    stream->numAck = 0;
+
+                // Cuore dell'algoritmo: devo verificare a quale dei 4 casi appartengo e fare le azioni appropriate.
+
+                //Devo calcolare tau nuovo e poi tau_dt
+                int D_deltat = tcpseg->getAckNo() - stream->Di;
+                stream->Di = tcpseg->getAckNo();
+                double newTau = (double)(stream->dur * (stream->Di - stream->Di_base))/stream->videoSize;
+                double tau_dt = newTau - stream->tau;   // quantità di secondi di video scaricati negli ultimi dt secondi
+                stream->tau = newTau;
+                double deltat = simTime().dbl() - stream->ti;
+                stream->ti = simTime().dbl();
+
+                if (!stream->psi && (stream->beta + tau_dt) >= theta0)      //Caso STALLO -> PLAY
+                {
+                    stream->psi = true;
+                    stream->rho = stream->rho + deltat;
+                    stream->beta = stream->beta + tau_dt - deltat;
+                    if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
+                    {
+                        stream->rho = stream->rho - (0.4 - stream->beta);    //Tale istruzione corregge la quantità di video riprodotta dovuta al fatto di essere scesi al di sotto di 0.4 secondi di video nel buffer
+                        stream->beta = 0.4;
+                        stream->psi = false;
+                        stream->NumEventRebuf = stream->NumEventRebuf + 1;
+                        stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
+                        RebufferingEvent *eve = new RebufferingEvent;
+                        eve->time = simTime().dbl() - stream->tInit;;
+                        stream->events.push_back(*eve);
+                        return;
+                    }
+                }
+                else if (!stream->psi && (stream->beta + tau_dt) < theta0)  //Caso STALLO -> STALLO
+                {
+                    stream->rebufferingTime = stream->rebufferingTime + deltat;
+                    stream->beta = stream->beta + tau_dt;
+                    stream->events.back().duration = stream->rebufferingTime;
+                }
+                else if (stream->psi && (stream->beta + tau_dt) > theta1)   //Caso PLAY -> PLAY
+                {
+                    stream->rho = stream->rho + deltat;
+                    stream->beta = stream->beta + tau_dt - deltat;
+                    if (stream->beta < 0.4)                         //ENTRA IN PLAY - STALLO
+                    {
+                        stream->rho = stream->rho - (0.4 - stream->beta);
+                        stream->beta = 0.4;
+                        stream->psi = false;
+                        stream->NumEventRebuf = stream->NumEventRebuf + 1;
+                        stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
+                        RebufferingEvent *eve = new RebufferingEvent;
+                        eve->time = simTime().dbl() - stream->tInit;
+                        stream->events.push_back(*eve);
+                        return;
+                    }
+
+                    float Vin = (D_deltat*8)/deltat;                  //Velocità di alimentazione del buffer (in bit/s)
+                    float Vout = (stream->videoSize*8)/stream->dur;   //Velocità di riproduzione del video (in bit/s)
+
+                    simtime_t Teb;
+                    if (Vout > Vin)
+                    {
+                        Teb = ((stream->beta - theta1)*stream->videoSize*8/stream->dur)/(Vout - Vin);
+                        if (Teb < 5)
+                            numAckToJump = 0;
+                    }
+                    else
+                        numAckToJump = par("numAckToJump");
+
+                }
 
             }
-
-        }
-        else if (tcpseg->getFinBit())    //Quando trova il bit FIN settato significa che il video ha finito di essere scaricato
-        {
-            record.push_back(*stream);
-            for (it = container.begin(); it != container.end(); ++it)
+            else if (tcpseg->getFinBit())    //Quando trova il bit FIN settato significa che il video ha finito di essere scaricato
             {
-                IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
-                if (it->clientAddr == contr->getSrcAddr() && it->serverAddr == contr->getDestAddr())
+                record.push_back(*stream);
+                for (it = container.begin(); it != container.end(); ++it)
                 {
-                    container.erase(it);
-                    break;
+                    IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
+                    if (it->clientAddr == contr->getSrcAddr() && it->serverAddr == contr->getDestAddr())
+                    {
+                        container.erase(it);
+                        break;
+                    }
                 }
+                if (container.size() == 0)
+                    rescheduleTimerOff();
             }
-            if (container.size() == 0)
-                rescheduleTimerOff();
-        }
-        else if (tcpseg->getRstBit())     //Vi si entra quando si trova il RST settato: ciò significa che il video è stato interrotto dall'utente per cui si termina la raccolta di statistiche per tale flusso
-        {
-            stream->RSTfound = true;
-            record.push_back(*stream);
-            for (it = container.begin(); it != container.end(); ++it)
+            else if (tcpseg->getRstBit())     //Vi si entra quando si trova il RST settato: ciò significa che il video è stato interrotto dall'utente per cui si termina la raccolta di statistiche per tale flusso
             {
-                IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
-                if (it->clientAddr == contr->getSrcAddr() && it->serverAddr == contr->getDestAddr())
+                stream->RSTfound = true;
+                record.push_back(*stream);
+                for (it = container.begin(); it != container.end(); ++it)
                 {
-                    container.erase(it);
-                    break;
+                    IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
+                    if (it->clientAddr == contr->getSrcAddr() && it->serverAddr == contr->getDestAddr())
+                    {
+                        container.erase(it);
+                        break;
+                    }
                 }
+                if (container.size() == 0)
+                    rescheduleTimerOff();
             }
-            if (container.size() == 0)
-                rescheduleTimerOff();
         }
     }
     else
@@ -289,7 +294,7 @@ void YT_traffic_analyzer::analyzeStoC(cPacket *packet, StreamingStats *stream)
         if (i>0)
         {
             cPacket *pack = ((TCPSegment *)packet)->getPayload(0).msg;
-            if (dynamic_cast<YTVideoPacketMsg *>(pack) != NULL)
+            if (dynamic_cast<YTVideoPacketMsg *>(pack) != NULL && stream->TCPServerPort == ((TCPSegment *)packet)->getSrcPort())
             {
                 stream->bitrate = ((YTVideoPacketMsg *)pack)->getMetaTag_bitrate();
                 stream->videoSize = ((YTVideoPacketMsg *)pack)->getMetaTag_videoSize();

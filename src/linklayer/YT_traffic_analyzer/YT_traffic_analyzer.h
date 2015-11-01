@@ -37,6 +37,7 @@ class YT_traffic_analyzer : public QueueBase
         int numAck;              //Porta il conto degli ack saltati dal controllo
         IPvXAddress clientAddr;
         IPvXAddress serverAddr;
+        int TCPServerPort;
         int dur;                // in secondi
         int itag;
         int bitrate;            // in kbps
@@ -56,7 +57,7 @@ class YT_traffic_analyzer : public QueueBase
         double rebufferingTime;                // durata dello stallo attuale
         int NumEventRebuf;                     // Numero di eventi di rebuffering
         std::vector<RebufferingEvent> events;  // Vettore contenente gli eventi di rebuffering
-        StreamingStats() { numAck = 0; tcpAppID = 0; clientAddr.set("0.0.0.0"); serverAddr.set("0.0.0.0"); dur = 0; itag = 0; bitrate = 0; videoSize = 0; tInit = 0; ti = 0; RSTfound = false; requestFound = false; MetaTagReceived = false; firstAck = false; psi = false; Di = 0; beta = 0; tau = 0; rho = 0; rebufferingTime = 0; NumEventRebuf = 0;
+        StreamingStats() { numAck = 0; tcpAppID = 0; clientAddr.set("0.0.0.0"); serverAddr.set("0.0.0.0"); TCPServerPort = 0; dur = 0; itag = 0; bitrate = 0; videoSize = 0; tInit = 0; ti = 0; RSTfound = false; requestFound = false; MetaTagReceived = false; firstAck = false; psi = false; Di = 0; beta = 0; tau = 0; rho = 0; rebufferingTime = 0; NumEventRebuf = 0;
                            RebufferingEvent *eve = new RebufferingEvent;
                            events.push_back(*eve); }
     };
