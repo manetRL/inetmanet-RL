@@ -13,8 +13,11 @@
 //
 
 #include "INETDefs.h"
+#include <iostream>
+#include <fstream>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "YT_traffic_analyzer.h"
 #include "EtherFrame.h"
 #include "Ieee802Ctrl_m.h"
@@ -34,8 +37,22 @@ Define_Module(YT_traffic_analyzer);
 
 void YT_traffic_analyzer::initialize()
 {
+    timeSignal = registerSignal("time");
+    durationSignal = registerSignal("duration");
+    NumRebufSignal = registerSignal("NumRebuf");
+    FreqRebuffSignal = registerSignal("FreqRebuff");
+    flowsMeasuredSignal = registerSignal("flowsMeasured");
+    totalQoESignal = registerSignal("totalQoE");
+    QoE144pSignal = registerSignal("QoE144p");
+    QoE240pSignal = registerSignal("QoE240p");
+    QoE360pSignal = registerSignal("QoE360p");
+    QoE480pSignal = registerSignal("QoE480p");
+    QoE720pSignal = registerSignal("QoE720p");
+    QoE1080pSignal = registerSignal("QoE1080p");
+
     theta0 = 2.2;
     theta1 = 0.4;
+    QoEMax = par("QoEMax");
     numAckToJump = par("numAckToJump");
     interval = par("DataNotFound");
     MaxStreamCaptured = par("MaxStreamCaptured");
@@ -75,7 +92,6 @@ void YT_traffic_analyzer::endService(cPacket *packet)
         handleIncomingDatagram((IPv4Datagram *)higherlayermsg);
     else
         delete higherlayermsg;
-
 }
 
 void YT_traffic_analyzer::handleIncomingDatagram(IPv4Datagram *datagram)   //Qui mi arriva il pacchetto IPv4 da esaminare
@@ -169,6 +185,7 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                     stream->ti = simTime().dbl();
                     stream->tInit = simTime().dbl();
                     stream->firstAck = true;
+                    stream->firstRebuf = true;
                     return;
                 }
 
@@ -185,14 +202,15 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                 //Devo calcolare tau nuovo e poi tau_dt
                 int D_deltat = tcpseg->getAckNo() - stream->Di;
                 stream->Di = tcpseg->getAckNo();
-                double newTau = (double)(stream->dur * (stream->Di - stream->Di_base))/stream->videoSize;
+                double newTau = (stream->dur * (stream->Di - stream->Di_base))/stream->videoSize;
                 double tau_dt = newTau - stream->tau;   // quantità di secondi di video scaricati negli ultimi dt secondi
                 stream->tau = newTau;
                 double deltat = simTime().dbl() - stream->ti;
                 stream->ti = simTime().dbl();
 
-                if (!stream->psi && (stream->beta + tau_dt) >= theta0)      //Caso STALLO -> PLAY
+                if (!stream->psi && (stream->beta + tau_dt) >= theta0 && !stream->firstRebuf)      //Caso STALLO -> PLAY NORMALE
                 {
+                    //stream->firstRebuf = false;
                     stream->psi = true;
                     stream->rho = stream->rho + deltat;
                     stream->beta = stream->beta + tau_dt - deltat;
@@ -205,11 +223,25 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                         stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
                         RebufferingEvent *eve = new RebufferingEvent;
                         eve->time = simTime().dbl() - stream->tInit;;
+                        eve->timeInVideo = stream->rho;
                         stream->events.push_back(*eve);
                         return;
                     }
                 }
-                else if (!stream->psi && (stream->beta + tau_dt) < theta0)  //Caso STALLO -> STALLO
+                else if (!stream->psi && (stream->beta + tau_dt) >= 10 && stream->firstRebuf)      //Caso STALLO -> PLAY Primo Buffering
+                {
+                    stream->firstRebuf = false;
+                    stream->psi = true;
+                    stream->rho = stream->rho + deltat;
+                    stream->beta = stream->beta + tau_dt - deltat;
+                }
+                else if (!stream->psi && (stream->beta + tau_dt) < theta0 && !stream->firstRebuf)  //Caso STALLO -> STALLO NORMALE
+                {
+                    stream->rebufferingTime = stream->rebufferingTime + deltat;
+                    stream->beta = stream->beta + tau_dt;
+                    stream->events.back().duration = stream->rebufferingTime;
+                }
+                else if (!stream->psi && (stream->beta + tau_dt) < 10 && stream->firstRebuf)  //Caso STALLO -> STALLO Primo Buffering
                 {
                     stream->rebufferingTime = stream->rebufferingTime + deltat;
                     stream->beta = stream->beta + tau_dt;
@@ -228,6 +260,7 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                         stream->rebufferingTime = 0;                             //Faccio in modo da avere un elemento del vettore "events" per ogni evento di rebuffering che riporta istante di blocco e durata.
                         RebufferingEvent *eve = new RebufferingEvent;
                         eve->time = simTime().dbl() - stream->tInit;
+                        eve->timeInVideo = stream->rho;
                         stream->events.push_back(*eve);
                         return;
                     }
@@ -244,13 +277,26 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
                     }
                     else
                         numAckToJump = par("numAckToJump");
-
                 }
-
             }
             else if (tcpseg->getFinBit())    //Quando trova il bit FIN settato significa che il video ha finito di essere scaricato
             {
+                computeQoE(stream);
+                writeResults(stream);
+                emit(flowsMeasuredSignal,stream);
+                emit(totalQoESignal,stream->QoE3C);
+                emit(FreqRebuffSignal, stream->NumEventRebuf/stream->dur);
+                stream->endDownloadTime = simTime().dbl();
+
                 record.push_back(*stream);
+                std::vector<RebufferingEvent>::iterator reb;
+                for (reb = stream->events.begin()+1; reb != stream->events.end(); ++reb)
+                {
+                    emit(timeSignal, reb->timeInVideo);
+                    emit(durationSignal, reb->duration);
+                }
+                emit(NumRebufSignal, stream->NumEventRebuf);
+
                 for (it = container.begin(); it != container.end(); ++it)
                 {
                     IPv4ControlInfo *contr = (IPv4ControlInfo *)tcpseg->getControlInfo();
@@ -283,7 +329,6 @@ void YT_traffic_analyzer::analyzeCtoS(cPacket *packet, StreamingStats *stream)  
     }
     else
         return;
-
 }
 
 void YT_traffic_analyzer::analyzeStoC(cPacket *packet, StreamingStats *stream)
@@ -304,7 +349,6 @@ void YT_traffic_analyzer::analyzeStoC(cPacket *packet, StreamingStats *stream)
     }
     else
         return;
-
 }
 
 void YT_traffic_analyzer::deleteStats(cMessage *msg)
@@ -319,9 +363,239 @@ void YT_traffic_analyzer::deleteStats(cMessage *msg)
             break;
         }
     }
-//    if (container.size() == 0)
-//        rescheduleTimerOff();
+
     delete msg;
+}
+
+void YT_traffic_analyzer::computeQoE(StreamingStats *stream)
+{
+    double sommaIstantiStallo = 0;
+//    double sumForQoE3 = 0;
+    double stalloTot = 0;            //Somma della durata di tutti gli stalli
+    double stalloMedio = 0;          //Durata media degli stalli
+    double istanteStalloMedio = 0;   //Istante di tempo medio degli avvenimenti di stallo
+    double istanteStalloMedio_norm = 0;  //Utilizzato per il calcolo della QoE con varianza
+    double QoERif = 0;
+    double QoEcl = 0;
+    double QoERif_Var = 0;
+    double QoEdevstd = 0;
+    double devstd_norm = 0;
+    std::vector<RebufferingEvent>::iterator reb;
+
+    if (stream->NumEventRebuf > 0)
+    {
+        for (reb = stream->events.begin()+1; reb != stream->events.end(); ++reb)
+        {
+            stalloTot = stalloTot + reb->duration;
+            sommaIstantiStallo = sommaIstantiStallo + reb->timeInVideo;
+//          sumForQoE3 = sumForQoE3 + (reb->timeInVideo/stream->rho - 0.5)*reb->duration + reb->duration;
+        }
+
+        istanteStalloMedio = sommaIstantiStallo/stream->NumEventRebuf;
+        istanteStalloMedio_norm = istanteStalloMedio/stream->dur;
+        stalloMedio = stalloTot/stream->NumEventRebuf;
+
+
+        if(istanteStalloMedio <= stream->rho/4)
+            QoERif = 3.25;
+        else if (istanteStalloMedio > stream->rho/4 && istanteStalloMedio <= stream->rho/2)
+            QoERif = 3;
+        else if (istanteStalloMedio > stream->rho/2 && istanteStalloMedio <= stream->rho/4*3)
+            QoERif = 2.75;
+        else if (istanteStalloMedio > stream->rho/4*3)
+            QoERif = 2.5;
+        else throw cRuntimeError(this, "Problemi con calcolo QoE");
+
+        if(istanteStalloMedio_norm <= 0.25)
+            QoEcl = 2.5;
+        else if (istanteStalloMedio_norm > 0.25 && istanteStalloMedio_norm <= 0.5)
+            QoEcl = 2.75;
+        else if (istanteStalloMedio_norm > 0.5 && istanteStalloMedio_norm <= 0.75)
+            QoEcl = 3;
+        else if (istanteStalloMedio_norm > 0.75)
+            QoEcl = 3.25;
+        else throw cRuntimeError(this, "Problemi con calcolo QoE");
+
+        double tempvar = 0;
+        for (reb = stream->events.begin()+1; reb != stream->events.end(); ++reb)
+            tempvar = tempvar + (reb->timeInVideo - istanteStalloMedio)*(reb->timeInVideo - istanteStalloMedio);
+        devstd_norm = sqrt(tempvar/stream->NumEventRebuf)/stream->dur;
+
+        if(QoEcl == 2.5 && istanteStalloMedio_norm + devstd_norm <= 0.25)
+            QoERif_Var = QoEcl;
+        else if (QoEcl == 2.75 && istanteStalloMedio_norm + devstd_norm > 0.25 && istanteStalloMedio_norm + devstd_norm <= 0.5)
+            QoERif_Var = QoEcl;
+        else if (QoEcl == 3 && istanteStalloMedio_norm + devstd_norm > 0.5 && istanteStalloMedio_norm + devstd_norm <= 0.75)
+            QoERif_Var = QoEcl - 0.25;
+        else if (QoEcl == 3.25 && istanteStalloMedio_norm + devstd_norm > 0.75 && istanteStalloMedio_norm + devstd_norm <= 1)
+            QoERif_Var = QoEcl - 0.5;
+        else
+        {
+            QoERif_Var = QoEcl + 0.25*(devstd_norm/0.125);
+            if (QoERif_Var > 3.25)
+                QoERif_Var = 3.25;
+        }
+
+        if (devstd_norm < 0.1)
+            QoEdevstd = QoERif;
+        else if (devstd_norm >= 0.1 && devstd_norm < 0.2)
+            QoEdevstd = 3;
+        else if (devstd_norm >= 0.2)
+            QoEdevstd = 3.25;
+
+        double rebufFreq = stream->NumEventRebuf/stream->dur;
+
+        stream->QoE1 = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoEMax;
+        if(stream->QoE1 < 0)
+            stream->QoE1 = 0;
+
+        stream->QoE2A = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoERif;
+        if(stream->QoE2A < 0)
+            stream->QoE2A = 0;
+
+        if (stream->NumEventRebuf > 1)
+        {
+            stream->QoE2B = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoERif_Var;
+            if(stream->QoE2B < 0)
+                stream->QoE2B = 0;
+
+            stream->QoE2C = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoEdevstd;
+            if(stream->QoE2C < 0)
+                stream->QoE2C = 0;
+        }
+        else
+        {
+            stream->QoE2B = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoERif;
+            if(stream->QoE2B < 0)
+                stream->QoE2B = 0;
+
+            stream->QoE2C = (1 - stream->NumEventRebuf*stalloMedio/stream->rho)*QoERif;
+            if(stream->QoE2C < 0)
+                stream->QoE2C = 0;
+        }
+
+        stream->QoE3A = (1 - (stream->NumEventRebuf/stream->rho) * ((istanteStalloMedio/stream->rho - 0.5) * stalloMedio + stalloMedio))*QoERif;
+        if(stream->QoE3A < 0)
+            stream->QoE3A = 0;
+
+        if (stream->NumEventRebuf > 1)
+        {
+            stream->QoE3B = (1 - (stream->NumEventRebuf/stream->rho) * ((istanteStalloMedio/stream->rho - 0.5) * stalloMedio + stalloMedio))*QoERif_Var;
+            if(stream->QoE3B < 0)
+                stream->QoE3B = 0;
+
+            stream->QoE3C = (1 - (stream->NumEventRebuf/stream->rho) * ((istanteStalloMedio/stream->rho - 0.5) * stalloMedio + stalloMedio))*QoEdevstd;
+            if(stream->QoE3C < 0)
+                stream->QoE3C = 0;
+        }
+        else
+        {
+            stream->QoE3B = (1 - (stream->NumEventRebuf/stream->rho) * ((istanteStalloMedio/stream->rho - 0.5) * stalloMedio + stalloMedio))*QoERif;
+            if(stream->QoE3B < 0)
+                stream->QoE3B = 0;
+
+            stream->QoE3C = (1 - (stream->NumEventRebuf/stream->rho) * ((istanteStalloMedio/stream->rho - 0.5) * stalloMedio + stalloMedio))*QoERif;
+            if(stream->QoE3C < 0)
+                stream->QoE3C = 0;
+        }
+
+        stream->QoEln = -log(60*rebufFreq)+2;
+        if (60*rebufFreq > 3)
+            stream->QoEln = 0;
+        else if (60*rebufFreq < 0.1)
+            stream->QoEln = 3.25;
+
+        if (stream->QoEln > 3.25)
+            stream->QoEln = 3.25;
+        else if (stream->QoEln < 0)
+            stream->QoEln = 0;
+    }
+    else
+    {
+        stream->QoE1 = 3.25;
+        stream->QoE2A = 3.25;
+        stream->QoE2B = 3.25;
+        stream->QoE2C = 3.25;
+        stream->QoE3A = 3.25;
+        stream->QoE3B = 3.25;
+        stream->QoE3C = 3.25;
+        stream->QoEln = 3.25;
+    }
+
+//    if(istanteStalloMedio <= stream->rho/4)
+//        QoERif = 4;
+//    else if (istanteStalloMedio > stream->rho/4 && istanteStalloMedio <= stream->rho/2)
+//        QoERif = 3.5;
+//    else if (istanteStalloMedio > stream->rho/2 && istanteStalloMedio <= stream->rho/4*3)
+//        QoERif = 3;
+//    else if (istanteStalloMedio > stream->rho/4*3)
+//        QoERif = 2.5;
+//    else throw cRuntimeError(this, "Problemi con calcolo QoE");
+//
+//    if(istanteStalloMedio_norm <= 0.25)
+//        QoERif1 = 2.5;
+//    else if (istanteStalloMedio_norm > 0.25 && istanteStalloMedio_norm <= 0.5)
+//        QoERif1 = 3;
+//    else if (istanteStalloMedio_norm > 0.5 && istanteStalloMedio_norm <= 0.75)
+//        QoERif1 = 3.5;
+//    else if (istanteStalloMedio_norm > 0.75)
+//        QoERif1 = 4;
+//    else throw cRuntimeError(this, "Problemi con calcolo QoE");
+//
+//    double tempvar = 0;
+//    for (reb = stream->events.begin()+1; reb != stream->events.end(); ++reb)
+//        tempvar = tempvar + (reb->timeInVideo - istanteStalloMedio)*(reb->timeInVideo - istanteStalloMedio);
+//    dev_std_norm = sqrt(tempvar/stream->NumEventRebuf)/stream->dur;
+//    QoERif_Var = QoERif1 + 0.5*floor(dev_std_norm/0.125);
+
+//    stream->QoE1 = (1 - stalloTot/stream->rho)*QoEMax;
+//
+//    stream->QoE2 = (1 - stream->NumEventRebuf*(stalloTot/stream->rho))*QoEMax;
+//
+//    stream->QoE_conMax = (1 - (stream->NumEventRebuf/stream->rho)*sumForQoE3)*QoEMax;
+//
+//    if (stream->NumEventRebuf > 1)
+//    {
+//        stream->QoE_conRif = (1 - (stream->NumEventRebuf/stream->rho)*sumForQoE3)*QoERif;
+//        stream->QoE_conVar = (1 - (stream->NumEventRebuf/stream->rho)*sumForQoE3)*QoERif_Var;
+//    }
+//    else
+//    {
+//        stream->QoE_conRif = (1 - (stream->NumEventRebuf/stream->rho)*sumForQoE3)*QoERif;
+//        stream->QoE_conVar = (1 - (stream->NumEventRebuf/stream->rho)*sumForQoE3)*QoERif;;
+//    }
+
+}
+
+void YT_traffic_analyzer::writeResults(StreamingStats *stream)
+{
+    switch (stream->itag)
+    {
+        case ThreeGP_144p:
+            emit(QoE144pSignal,stream->QoE3C);
+            break;
+        case ThreeGP_240p:
+            emit(QoE240pSignal,stream->QoE3C);
+            break;
+        case FLV_240p:
+            emit(QoE240pSignal,stream->QoE3C);
+            break;
+        case FLV_360p:
+            emit(QoE360pSignal,stream->QoE3C);
+            break;
+        case MP4_360p:
+            emit(QoE360pSignal,stream->QoE3C);
+            break;
+        case FLV_480p:
+            emit(QoE480pSignal,stream->QoE3C);
+            break;
+        case MP4_720p:
+            emit(QoE720pSignal,stream->QoE3C);
+            break;
+        case MP4_1080p:
+            emit(QoE1080pSignal,stream->QoE3C);
+            break;
+    }
 }
 
 void YT_traffic_analyzer::rescheduleTimerOff()
@@ -329,7 +603,6 @@ void YT_traffic_analyzer::rescheduleTimerOff()
     AlgActive = false;
     AlgOff->setKind(TIMER_ALG_OFF);
     scheduleAt(simTime() + timeOff, AlgOff);
-
 }
 
 cPacket *YT_traffic_analyzer::IPv4decapsulate(IPv4Datagram *datagram)
@@ -350,4 +623,50 @@ cPacket *YT_traffic_analyzer::IPv4decapsulate(IPv4Datagram *datagram)
     return packet;
 }
 
+void YT_traffic_analyzer::finish()
+{
+    if (record.size() == 0)
+        return;
 
+
+    const char *fileResults = par("fileNameResults");
+    const char *fileSummary = par("fileNameSummary");
+    ofstream results (fileResults);
+    ofstream summary (fileSummary);
+
+    results << "timeReproduction" << ',' << "simTime" << ',' << "clientIP" << ',' << "serverIP" << ',' << "videoQuality" << ',' << "videoDuration" << ',' << "PlayerStatus" << endl;
+    summary << "simTime" << ',' << "clientIP" << ',' << "serverIP" << ',' << "videoQuality" << ',' << "videoDuration" << ',' << "QoE1" << ',' << "QoE2A" << ',' << "QoE2B" << ',' << "QoE2C" << ',' << "QoE3A" << ',' << "QoE3B" << ',' << "QoE3C" << ',' << "QoEln" << ',' << "NumOfRebuffer" << ',' << "totalRebufferDuration" << ',' << "meanRebufferPosition" << ',' << "stddevRebufferPosition" << ',' << "RebufferFreq" << endl;
+
+    std::vector<StreamingStats>::iterator iter;
+    for (iter = record.begin(); iter != record.end(); ++iter)
+    {
+        double stalloTot = 0;
+        double sommaIstantiStallo = 0;
+        double istanteStalloMedio = 0;
+        double stddev = 0;
+        double rebufFreq = 0;
+        std::vector<RebufferingEvent>::iterator eve;
+        results << endl;
+        for (eve = iter->events.begin()+1; eve != iter->events.end(); eve++)   //Non viene considerato il tempo di primo buffering all'inizio del video.
+        {
+            stalloTot = stalloTot + eve->duration;
+            sommaIstantiStallo = sommaIstantiStallo + eve->timeInVideo;
+
+            results << eve->timeInVideo << ',' << eve->time << ',' << iter->clientAddr.str() << ',' << iter->serverAddr.str() << ',' << iter->itag << ',' << iter->dur << ',' << "0" <<  endl;
+            results << eve->timeInVideo << ',' << eve->time+eve->duration << ',' << iter->clientAddr.str() << ',' << iter->serverAddr.str() << ',' << iter->itag << ',' << iter->dur << ',' << "1" <<  endl;
+        }
+        if (iter->NumEventRebuf > 0)
+        {
+            istanteStalloMedio = sommaIstantiStallo/iter->NumEventRebuf;
+            double temp = 0;
+            for (eve = iter->events.begin()+1; eve != iter->events.end(); eve++)
+                temp = temp + (eve->timeInVideo - istanteStalloMedio)*(eve->timeInVideo - istanteStalloMedio);
+            stddev = sqrt(temp/iter->NumEventRebuf);
+            rebufFreq = iter->NumEventRebuf/iter->dur;
+        }
+
+        summary << iter->endDownloadTime << ',' << iter->clientAddr.str() << ',' << iter->serverAddr.str() << ',' << iter->itag << ',' << iter->dur << ',' << iter->QoE1 << ',' << iter->QoE2A << ',' << iter->QoE2B << ',' << iter->QoE2C << ',' << iter->QoE3A << ',' << iter->QoE3B << ',' << iter->QoE3C << ',' << iter->QoEln << ',' << iter->NumEventRebuf << ',' << stalloTot << ',' << istanteStalloMedio << ',' << stddev << ',' << rebufFreq << endl;
+    }
+    results.close();
+    summary.close();
+}

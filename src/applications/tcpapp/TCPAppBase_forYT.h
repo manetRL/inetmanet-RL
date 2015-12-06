@@ -31,6 +31,7 @@ class INET_API TCPAppBase_forYT : public cSimpleModule, public TCPSocket::Callba
 {
   protected:
     TCPSocket socket;
+    cMessage *replyNotArrived;
 
     // statistics
     int numSessions;

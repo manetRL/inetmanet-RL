@@ -28,11 +28,12 @@
 #include "DNS.h"
 
 
-#define MSGKIND_CONNECT  0
-#define MSGKIND_SEND     1
-#define MSGKIND_ABORT    2
-#define MSGKIND_FRONTEND 50
-#define MSGKIND_DNS      100
+#define MSGKIND_CONNECT   0
+#define MSGKIND_SEND      1
+#define MSGKIND_ABORT     2
+#define MSGKIND_REPLYFAIL 25
+#define MSGKIND_FRONTEND  50
+#define MSGKIND_DNS       100
 
 Define_Module(TCP_YT_request_App);
 
@@ -46,6 +47,7 @@ TCP_YT_request_App::TCP_YT_request_App()
 TCP_YT_request_App::~TCP_YT_request_App()
 {
     cancelAndDelete(timeoutMsg);
+    cancelAndDelete(replyNotArrived);
 }
 
 void TCP_YT_request_App::initialize(int stage)
@@ -185,6 +187,7 @@ void TCP_YT_request_App::handleTimer(cMessage *msg)
     {
         case MSGKIND_CONNECT:
         {
+            cancelEvent(replyNotArrived);
             EV << "starting session\n";
             const char *connectAddress = msg->par("resolvedAddress");
             connect(connectAddress); // active OPEN
@@ -208,6 +211,13 @@ void TCP_YT_request_App::handleTimer(cMessage *msg)
         case MSGKIND_FRONTEND:
         {
             requestPage(msg);
+            break;
+        }
+
+        case 25:
+        {
+            simtime_t d = simTime()+1;
+            rescheduleOrDeleteTimer(d, MSGKIND_DNS);
             break;
         }
 
@@ -247,6 +257,10 @@ void TCP_YT_request_App::rescheduleOrDeleteTimer(simtime_t d, short int msgKind)
     {
         delete timeoutMsg;
         timeoutMsg = NULL;
+        if (replyNotArrived->isScheduled())
+            cancelEvent(replyNotArrived);
+        delete replyNotArrived;
+        replyNotArrived = NULL;
     }
 }
 
@@ -270,12 +284,6 @@ void TCP_YT_request_App::socketDataArrived(int connId, void *ptr, cPacket *msg, 
         EV << "reply to last request arrived, closing session\n";
         close();
     }
-
-//    if (socket.getState() != TCPSocket::LOCALLY_CLOSED && par("sendAbort"))
-//    {
-//        socket.abort();
-//        rescheduleTimer();
-//    }
 }
 
 void TCP_YT_request_App::socketClosed(int connId, void *ptr)
@@ -305,10 +313,10 @@ void TCP_YT_request_App::socketFailure(int connId, void *ptr, int code)
 void TCP_YT_request_App::rescheduleTimer()
 {
     if (timeoutMsg)
-        {
-            simtime_t d = simTime() + (simtime_t) par("idleInterval");
-            rescheduleOrDeleteTimer(d, MSGKIND_DNS);
-        }
+    {
+        simtime_t d = simTime() + (simtime_t) par("idleInterval");
+        rescheduleOrDeleteTimer(d, MSGKIND_DNS);
+    }
 }
 
 itagType TCP_YT_request_App::convertStringToItag(const char * itag)

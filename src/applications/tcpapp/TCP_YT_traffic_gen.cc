@@ -67,6 +67,7 @@ void TCP_YT_traffic_gen::initialize(int stage)
 
         WATCH_MAP(streams);
         chunk = par("throttling_chunk");
+        multiplier = par("throttling_multiplier");
 
     }
     else if (stage == 3)
@@ -129,8 +130,8 @@ void TCP_YT_traffic_gen::handleMessage(cMessage *msg)
                 break;
             }
         }
-        if (it == streams.end())
-            throw cRuntimeError("Model error: Stream not found for timer");
+//        if (it == streams.end())
+//            throw cRuntimeError("Model error: Stream not found for timer");
 
         delete msg;
 
@@ -319,7 +320,7 @@ void TCP_YT_traffic_gen::sendStreamData(cMessage *timer)
     // reschedule timer if there's bytes left to send
     if (d->bytesLeft > 0)
     {
-        simtime_t interval = ((chunk/1024)*8)/(1.25*d->vidBitrt);
+        simtime_t interval = ((chunk/1024)*8)/(multiplier*d->vidBitrt);
         scheduleAt(simTime()+interval, timer);
     }
     else

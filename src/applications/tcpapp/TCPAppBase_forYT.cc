@@ -41,6 +41,8 @@ void TCPAppBase_forYT::initialize(int stage)
     }
     else if (stage == 3)
     {
+        replyNotArrived = new cMessage("NotArrived");
+
         // parameters
         const char *localAddress = par("localAddress");
         int localPort = par("localPort");
@@ -58,6 +60,12 @@ void TCPAppBase_forYT::handleMessage(cMessage *msg)
 {
     if (msg->getKind() == 100)    //Se il messaggio è per la verifica di un URL in tabella DNS
     {
+        if(!replyNotArrived->isScheduled())
+        {
+            replyNotArrived->setKind(25);              //Imposta il timer per far partire una nuova richiesta DNS se non si è ricevuta risposta alla richiesta video
+            scheduleAt(simTime()+15,replyNotArrived);
+        }
+
         const char *address = msg->par("address");
         cModule *dnsModule = getParentModule()->getSubmodule("DNS");
         DNS *dns = check_and_cast<DNS *>(dnsModule);
@@ -80,12 +88,6 @@ void TCPAppBase_forYT::handleMessage(cMessage *msg)
         else                                      //Altrimenti se l'indirizzo per l'URL richiesto non è in tabella DNS
             startDNS(msg);                        //fai partire la risoluzione DNS
     }
-//    else if (msg->isSelfMessage() && msg->getKind() == 2)
-//    {
-//        socket.abort();
-//        delete msg;
-//        rescheduleTimer();
-//    }
 
     else if (msg->isSelfMessage() || msg->getKind() == 0 || msg->getKind() == 50)    //Altrimenti se è la risposta ad una richiesta DNS
         handleTimer(msg);                                                            //fa partire o la richiesta al front-end server o al video server
@@ -100,7 +102,6 @@ void TCPAppBase_forYT::handleMessage(cMessage *msg)
             rescheduleTimer();
         }
     }
-
 }
 
 void TCPAppBase_forYT::connect(const char *connectAdd)

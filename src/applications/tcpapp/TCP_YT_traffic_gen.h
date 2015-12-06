@@ -42,6 +42,7 @@ public:
 
     bool firstPacket;
     long chunk;
+    double multiplier;
 
   protected:
     typedef std::map<long int, VideoStreamData> VideoStreamMap;

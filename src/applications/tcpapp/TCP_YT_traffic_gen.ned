@@ -32,9 +32,10 @@ simple TCP_YT_traffic_gen like ITCPApp
 //        int videoBitrate @unit(kbps);  //Bitrate del video da scaricare
 //        volatile int videoSize @unit(B);  // length of full a video stream in bytes
         double echoDelay @unit(s) = default(0s);
-        string dataTransferMode @enum("bytecount","object","bytestream") = default("bytecount");
+        string dataTransferMode @enum("bytecount","object","bytestream") = default("object");
         int BufferDimension_forTCP @unit(B) = default(2 MiB);
         int throttling_chunk @unit(B) = default(64 KiB);
+        double throttling_multiplier = default(1.25);
         @display("i=block/app");
         @signal[sentPk](type=cPacket);
         @signal[rcvdPk](type=cPacket);
