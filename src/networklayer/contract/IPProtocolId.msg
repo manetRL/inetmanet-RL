@@ -48,6 +48,8 @@ enum IPProtocolId
     IP_PROT_SCTP = 132;
     IP_PROT_DSR  = 48;
     IP_PROT_MANET = 138;
+    IP_PROT_DNS = 150;
+    IP_PROT_FRONTEND = 151;
 
     IP_PROT_IPv6EXT_HOP = 0;       // Hop-by-hop option header.
     IP_PROT_IPv6EXT_DEST = 60;     // Destination options header.

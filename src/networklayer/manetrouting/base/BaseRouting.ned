@@ -32,6 +32,7 @@ simple BaseRouting
         bool setICMPSourceAddress = default(false); // set the datagram source address if the address is undefined to the address of node
                                                  // This parameter allow that the ICMP messages could arrive to the source applications
         bool manetPurgeRoutingTables = default(true);
+        bool deleteInterfaceRoute = default(false); //Permette di eliminare la rotta della rete associata all'interfaccia
         bool autoassignAddress = default(false); // assign IP adresses automatically to the interfaces
         string autoassignAddressBase = default("10.0.0.0");
         bool isStaticNode = default(false);

@@ -2056,7 +2056,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             // add route...
             rtable_.add_entry(it->second, it->second, itDij->second.link().last_node(), 1, -1,itDij->second.link().quality(),itDij->second.link().getDelay());
-            omnet_chg_rte(it->second, it->second, netmask, hopCount, false, itDij->second.link().last_node());
+            omnet_chg_rte(it->second, it->second, netmask, hopCount, false, itDij->second.link().last_node(), IPv4Route::dOLSR);
         }
         else if (it->first > 1)
         {
@@ -2065,7 +2065,7 @@ OLSR_ETX::rtable_dijkstra_computation()
             if (entry==NULL)
                 opp_error("entry not found");
             rtable_.add_entry(it->second, entry->next_addr(), entry->iface_addr(), hopCount, entry->local_iface_index(),itDij->second.link().quality(),itDij->second.link().getDelay());
-            omnet_chg_rte (it->second, entry->next_addr(), netmask, hopCount, false, entry->iface_addr());
+            omnet_chg_rte (it->second, entry->next_addr(), netmask, hopCount, false, entry->iface_addr(), IPv4Route::dOLSR);
         }
         processed_nodes.erase(processed_nodes.begin());
         dijkstra->dijkstraMap.erase(itDij);
@@ -2079,7 +2079,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             // add route...
             rtable_.add_entry(*it, *it, dijkstra->D(*it).link().last_node(), 1, -1);
-            omnet_chg_rte(*it, *it, netmask, 1, false, dijkstra->D(*it).link().last_node());
+            omnet_chg_rte(*it, *it, netmask, 1, false, dijkstra->D(*it).link().last_node(), IPv4Route::dOLSR);
             processed_nodes.insert(*it);
         }
     }
@@ -2094,7 +2094,7 @@ OLSR_ETX::rtable_dijkstra_computation()
             OLSR_ETX_rt_entry* entry = rtable_.lookup(dijkstra->D(*it).link().last_node());
             assert(entry != NULL);
             rtable_.add_entry(*it, dijkstra->D(*it).link().last_node(), entry->iface_addr(), 2, entry->local_iface_index());
-            omnet_chg_rte(*it, dijkstra->D(*it).link().last_node(), netmask, 2, false, entry->iface_addr());
+            omnet_chg_rte(*it, dijkstra->D(*it).link().last_node(), netmask, 2, false, entry->iface_addr(), IPv4Route::dOLSR);
             processed_nodes.insert(*it);
         }
     }
@@ -2135,7 +2135,7 @@ OLSR_ETX::rtable_dijkstra_computation()
         {
             rtable_.add_entry(tuple->iface_addr(),
                               entry1->next_addr(), entry1->iface_addr(), entry1->dist(), entry1->local_iface_index(),entry1->quality,entry1->delay);
-            omnet_chg_rte(tuple->iface_addr(), entry1->next_addr(), netmask, entry1->dist(), false, entry1->iface_addr());
+            omnet_chg_rte(tuple->iface_addr(), entry1->next_addr(), netmask, entry1->dist(), false, entry1->iface_addr(), IPv4Route::dOLSR);
 
         }
     }

@@ -131,6 +131,7 @@ void addRoute(InterfaceEntry* ie, IRoutingTable* routingTable, const IPv4Address
     re->setGateway(IPv4Address::UNSPECIFIED_ADDRESS); // none
     re->setInterface(ie);
     re->setSourceType(IPv4Route::MANUAL);
+    re->setAdminDist(IPv4Route::dStatic);
     re->setMetric(1);
     routingTable->addRoute(re);
 }
@@ -174,6 +175,7 @@ void HostAutoConfigurator2::addDefaultRoutes()
     e->setNetmask(IPv4Address());
     e->setInterface(ie);
     e->setSourceType(IPv4Route::MANUAL);
+    e->setAdminDist(IPv4Route::dStatic);
      //e->getMetric() = 1;
     rt->addRoute(e);
 }
@@ -205,6 +207,7 @@ void HostAutoConfigurator2::addDefaultRoute()
     e->setNetmask(IPv4Address());
     e->setInterface(ie);
     e->setSourceType(IPv4Route::MANUAL);
+    e->setAdminDist(IPv4Route::dStatic);
     rt->addRoute(e);
 }
 
@@ -414,6 +417,7 @@ void HostAutoConfigurator2::setupRoutingTable()
         e->setGateway(defaultAddr);
         e->setInterface(ie);
         e->setSourceType(IPv4Route::MANUAL);
+        e->setAdminDist(IPv4Route::dStatic);
          //e->getMetric() = 1;
         routingTable->addRoute(e);
     }
@@ -484,6 +488,7 @@ void HostAutoConfigurator2::fillRoutingTables()
             e->setNetmask(IPv4Address(255,255,255,255)); // full match needed
             e->setInterface(ie);
             e->setSourceType(IPv4Route::MANUAL);
+            e->setAdminDist(IPv4Route::dStatic);
             //e->getMetric() = 1;
             routingTable->addRoute(e);
         }
